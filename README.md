@@ -4,6 +4,23 @@
 
 轻量 ComfyUI 自定义节点包，支持模型提供商接入、人格面具、图像生成和 xAI 视频。
 
+## 安装
+
+1. 进入 ComfyUI 的 `custom_nodes` 目录：
+   ```bash
+   cd ComfyUI/custom_nodes
+   ```
+2. 克隆本仓库：
+   ```bash
+   git clone https://github.com/tonylee2022/comfyui-llm-mini.git
+   ```
+3. 安装依赖：
+   ```bash
+   cd comfyui-llm-mini
+   pip install -r requirements.txt
+   ```
+   *注意：如果使用的是 ComfyUI 独立便携版本（Portable），请使用其内部 Python 解释器安装，例如运行：`..\..\..\python_embeded\python.exe -m pip install -r requirements.txt`。*
+
 ## 功能
 
 - 先选择提供商，再刷新模型列表，在节点面板中选择具体模型。
@@ -13,16 +30,6 @@
 - 支持 `persona/*.txt` 人格面具作为系统提示词。
 - OpenAI/Codex 图像共用面板，但后端实现路径分开。
 - 支持 xAI Imagine 与 xAI Video。
-
-## 署名
-
-本项目包含从 `comfyui_LLM_party` 迁移和改造的代码与行为：
-https://github.com/heshengtao/comfyui_LLM_party
-
-原始版权：
-Copyright (C) 2024 heshengtao <hst97@qq.com>
-
-`comfyui_LLM_party` 使用 GNU Affero General Public License v3.0。本项目使用同一许可证发布。
 
 ## 配置
 
@@ -61,3 +68,13 @@ base_url = http://192.168.5.1:3000/api/
 ### Google (Gemini) 授权配置
 
 Google 节点使用 API Key 凭据。在 `config.ini` 中填入免费申请的 API 密匙。支持全部生图、视频和聊天模型。
+
+## 署名
+
+本项目包含从 `comfyui_LLM_party` 迁移和改造的代码与行为：
+https://github.com/heshengtao/comfyui_LLM_party
+
+原始版权：
+Copyright (C) 2024 heshengtao <hst97@qq.com>
+
+`comfyui_LLM_party` 使用 GNU Affero General Public License v3.0。本项目使用同一许可证发布。

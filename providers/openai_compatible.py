@@ -86,7 +86,7 @@ def list_models(provider: str, api_key: str = "", base_url: str = "", credential
     if backend == "anthropic":
         return list_anthropic_models(info.get("api_key", ""), info.get("default_models", []))
     if backend == "gemini":
-        return list_gemini_models(info.get("api_key", ""), credential_source, info.get("default_models", []))
+        return list_gemini_models(info.get("api_key", ""), credential_source, info.get("default_models", []), base_url=info.get("base_url", ""))
     api_key, base_url, oauth_provider = resolve_oauth_marker(info.get("api_key", ""), provider, info.get("base_url", ""), "")
     if provider == "codex" or oauth_provider == "codex" or "chatgpt.com" in (base_url or ""):
         return info.get("default_models", [])
@@ -153,7 +153,7 @@ class ApiChatClient:
         if backend == "anthropic":
             response_text = send_anthropic_chat(api_key, self.model_name, messages, temperature, max_tokens, stream, extra_parameters)
         elif backend == "gemini":
-            response_text = send_gemini_sdk_chat(api_key, self.model_name, messages, temperature, max_tokens, extra_parameters)
+            response_text = send_gemini_sdk_chat(api_key, self.model_name, messages, temperature, max_tokens, extra_parameters, base_url=base_url)
         elif "chatgpt.com" in base_url or oauth_provider == "codex":
             response_text = call_codex_responses(api_key, self.model_name, messages)
         else:

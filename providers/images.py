@@ -70,7 +70,7 @@ def codex_image(prompt: str, model: str, size: str, image_tensors=None):
     return _codex_image(api_key, model, prompt, size, image_tensors or [])
 
 
-def openai_image(prompt: str, model: str, size: str, quality: str, background: str, n: int, seed: int, image_tensors=None, mask=None):
+def openai_image(prompt: str, model: str, size: str, quality: str, background: str, n: int, seed: int, image_tensors=None, mask=None, status_updater=None):
     image_tensors = [t for t in (image_tensors or []) if t is not None]
     info = resolve_provider("openai")
     api_key = info.get("api_key", "")
@@ -84,7 +84,14 @@ def openai_image(prompt: str, model: str, size: str, quality: str, background: s
     headers = {"Authorization": f"Bearer {api_key}"}
     if image_tensors:
         data = {"model": model, "prompt": prompt, "n": str(n), "size": size, "quality": quality, "background": background, "seed": str(seed), "response_format": "url"}
-        files = [("image" if len(image_tensors) == 1 else "image[]", _tensor_png_file(t, f"image_{i}.png")) for i, t in enumerate(image_tensors)]
+        files = []
+        total_imgs = len(image_tensors)
+        for i, t in enumerate(image_tensors):
+            if status_updater:
+                status_updater.update_status(f"Uploading image {i + 1}/{total_imgs}")
+            files.append(("image" if total_imgs == 1 else "image[]", _tensor_png_file(t, f"image_{i}.png")))
+        if status_updater:
+            status_updater.update_status("Generating")
         url = base_url + "images/edits"
         response = requests.post(url, headers=headers, data=data, files=files, timeout=120)
     else:
@@ -112,20 +119,28 @@ def google_imagen_generate(prompt: str, model: str, aspect_ratio: str, resolutio
     from PIL import Image
 
     client_kwargs = {"api_key": api_key}
+    http_options: dict = {"timeout": 120_000}
     if base_url:
-        client_kwargs["http_options"] = {"base_url": base_url}
+        http_options["base_url"] = base_url
+    client_kwargs["http_options"] = http_options
     client = genai.Client(**client_kwargs)
     
     real_mime = f"image/{mime_type}" if mime_type in ["jpeg", "png"] else "image/jpeg"
     tensors = []
 
     if model.startswith("gemini"):
+        image_size_val = None if resolution == "Default" else resolution
+        aspect_ratio_val = None if aspect_ratio == "auto" else aspect_ratio
+
+        image_config_kwargs = {}
+        if image_size_val:
+            image_config_kwargs["image_size"] = image_size_val
+        if aspect_ratio_val:
+            image_config_kwargs["aspect_ratio"] = aspect_ratio_val
+
         config = types.GenerateContentConfig(
             response_modalities=["IMAGE"],
-            image_config=types.ImageConfig(
-                aspect_ratio=aspect_ratio,
-                image_size=resolution
-            ),
+            image_config=types.ImageConfig(**image_config_kwargs) if image_config_kwargs else None,
             seed=seed
         )
         response = client.models.generate_content(
@@ -133,13 +148,23 @@ def google_imagen_generate(prompt: str, model: str, aspect_ratio: str, resolutio
             contents=prompt,
             config=config
         )
-        for part in response.parts:
-            img_data = part.as_image()
-            if img_data is not None:
-                import io
-                pil_img = Image.open(io.BytesIO(img_data.image_bytes)).convert("RGB")
-                arr = np.array(pil_img).astype(np.float32) / 255.0
-                tensors.append(torch.from_numpy(arr).unsqueeze(0))
+
+        if response.candidates:
+            candidate = response.candidates[0]
+            finish_reason = getattr(candidate, "finish_reason", None) or getattr(candidate, "finishReason", None)
+            if finish_reason:
+                finish_reason_str = str(finish_reason).upper()
+                if "IMAGE_PROHIBITED_CONTENT" in finish_reason_str or "SAFETY" in finish_reason_str or "BLOCK" in finish_reason_str:
+                    raise RuntimeError(f"Gemini API blocked the request. Reason: {finish_reason}")
+
+        if response.parts:
+            for part in response.parts:
+                img_data = part.as_image()
+                if img_data is not None:
+                    import io
+                    pil_img = Image.open(io.BytesIO(img_data.image_bytes)).convert("RGB")
+                    arr = np.array(pil_img).astype(np.float32) / 255.0
+                    tensors.append(torch.from_numpy(arr).unsqueeze(0))
     else:
         if aspect_ratio not in ["1:1", "3:4", "4:3", "9:16", "16:9"]:
             aspect_ratio = "1:1"
@@ -150,12 +175,14 @@ def google_imagen_generate(prompt: str, model: str, aspect_ratio: str, resolutio
             "4K": "4k"
         }
         mapped_size = res_map.get(resolution, "1k")
-        config = types.GenerateImagesConfig(
-            number_of_images=n,
-            aspect_ratio=aspect_ratio,
-            output_mime_type=real_mime,
-            image_size=mapped_size
-        )
+        config_kwargs = {
+            "number_of_images": n,
+            "aspect_ratio": aspect_ratio,
+            "output_mime_type": real_mime,
+        }
+        if "fast" not in model.lower():
+            config_kwargs["image_size"] = mapped_size
+        config = types.GenerateImagesConfig(**config_kwargs)
         response = client.models.generate_images(
             model=model,
             prompt=prompt,
@@ -173,10 +200,24 @@ def google_imagen_generate(prompt: str, model: str, aspect_ratio: str, resolutio
     return torch.cat(tensors, dim=0)
 
 
-def google_image_edit(prompt: str, model: str, image_tensors: list, aspect_ratio: str, resolution: str, seed: int, api_key: str, base_url: str = ""):
+def google_gemini_image_generate(
+    prompt: str,
+    model: str,
+    image_tensors: list | None,
+    files: str | None,
+    aspect_ratio: str,
+    resolution: str | None,
+    response_modalities: str,
+    seed: int,
+    api_key: str,
+    base_url: str = "",
+    thinking_level: str | None = None,
+    system_prompt: str = "",
+    status_updater=None
+):
     if not api_key:
         raise RuntimeError("No Google API key found. Please configure it in config.ini or environment variables.")
-    
+        
     from google import genai
     from google.genai import types
     from PIL import Image
@@ -185,54 +226,145 @@ def google_image_edit(prompt: str, model: str, image_tensors: list, aspect_ratio
     import io
 
     client_kwargs = {"api_key": api_key}
+    http_options: dict = {"timeout": 300_000}
     if base_url:
-        client_kwargs["http_options"] = {"base_url": base_url}
+        http_options["base_url"] = base_url
+    client_kwargs["http_options"] = http_options
     client = genai.Client(**client_kwargs)
-    
+
     contents = []
-    for tensor in image_tensors:
-        if tensor is None:
-            continue
-        if len(tensor.shape) == 4:
-            single_tensor = tensor[0]
-        else:
-            single_tensor = tensor
-            
-        arr = (single_tensor.detach().cpu().numpy() * 255).astype("uint8")
-        pil_image = Image.fromarray(arr)
-        contents.append(pil_image)
-        
-    if prompt:
-        contents.append(prompt)
-        
-    if not contents:
-        raise RuntimeError("No input provided (neither prompt nor reference images).")
-        
-    config = types.GenerateContentConfig(
-        response_modalities=["IMAGE"],
-        image_config=types.ImageConfig(
-            aspect_ratio=aspect_ratio,
-            image_size=resolution
-        ),
-        seed=seed
-    )
     
+    # Process reference images
+    flat_images = []
+    if image_tensors:
+        for tensor in image_tensors:
+            if tensor is None:
+                continue
+            from ..core.media import downscale_image_tensor
+            downscaled = downscale_image_tensor(tensor)
+            for i in range(downscaled.shape[0]):
+                flat_images.append(downscaled[i])
+                
+        if len(flat_images) > 14:
+            raise ValueError("The current maximum number of supported reference images is 14.")
+
+        total_imgs = len(flat_images)
+        for idx, single_tensor in enumerate(flat_images):
+            if status_updater:
+                status_updater.update_status(f"Uploading image {idx + 1}/{total_imgs}")
+            arr = (single_tensor.detach().cpu().numpy() * 255).astype("uint8")
+            pil_image = Image.fromarray(arr)
+            contents.append(pil_image)
+
+    # Process files
+    if files and isinstance(files, str) and files.strip():
+        contents.append(files)
+
+    # Process prompt
+    if prompt:
+        if response_modalities != "IMAGE":
+            # 自动追加提示，让模型必须返回图像描述文本
+            prompt_with_suffix = prompt + " (Also, provide a detailed description of the generated image. 并且请提供生成图像的详细描述。)"
+            contents.append(prompt_with_suffix)
+        else:
+            contents.append(prompt)
+
+    if not contents:
+        raise RuntimeError("No input provided (neither prompt, files nor reference images).")
+
+    if status_updater:
+        status_updater.update_status("Generating")
+
+    image_config_kwargs = {}
+    if resolution and resolution != "Default":
+        image_config_kwargs["image_size"] = resolution
+    if aspect_ratio and aspect_ratio != "auto":
+        image_config_kwargs["aspect_ratio"] = aspect_ratio
+
+    config_kwargs = {
+        "response_modalities": ["IMAGE"] if response_modalities == "IMAGE" else ["TEXT", "IMAGE"],
+        "seed": seed
+    }
+    if image_config_kwargs:
+        config_kwargs["image_config"] = types.ImageConfig(**image_config_kwargs)
+        
+    if thinking_level:
+        config_kwargs["thinking_config"] = types.ThinkingConfig(
+            thinking_level=thinking_level.lower(),
+            include_thoughts=True
+        )
+        
+    if response_modalities != "IMAGE":
+        additional_sys = "\nSince response_modalities includes TEXT, you MUST also provide a text description of the generated image or answer the query."
+        if system_prompt:
+            if additional_sys not in system_prompt:
+                system_prompt += additional_sys
+        else:
+            system_prompt = additional_sys
+
+    if system_prompt:
+        config_kwargs["system_instruction"] = system_prompt
+
+    config = types.GenerateContentConfig(**config_kwargs)
+
     response = client.models.generate_content(
         model=model,
         contents=contents,
         config=config
     )
-    
+
     tensors = []
-    for part in response.parts:
-        img_data = part.as_image()
+    texts = []
+    thought_tensors = []
+
+    if response.candidates:
+        candidate = response.candidates[0]
+        finish_reason = getattr(candidate, "finish_reason", None) or getattr(candidate, "finishReason", None)
+        if finish_reason:
+            finish_reason_str = str(finish_reason).upper()
+            if "IMAGE_PROHIBITED_CONTENT" in finish_reason_str or "SAFETY" in finish_reason_str or "BLOCK" in finish_reason_str:
+                raise RuntimeError(f"Gemini API blocked the request. Reason: {finish_reason}")
+
+    parts = []
+    if response.candidates and len(response.candidates) > 0:
+        candidate = response.candidates[0]
+        if candidate.content and candidate.content.parts:
+            parts = candidate.content.parts
+    if not parts and response.parts:
+        parts = response.parts
+
+    for part in parts:
+        if part.text:
+            texts.append(part.text)
+            
+        is_thought = getattr(part, "thought", False)
+        
+        img_data = None
+        try:
+            img_data = part.as_image()
+        except Exception:
+            pass
+            
         if img_data is not None:
             pil_img = Image.open(io.BytesIO(img_data.image_bytes)).convert("RGB")
             arr = np.array(pil_img).astype(np.float32) / 255.0
-            tensors.append(torch.from_numpy(arr).unsqueeze(0))
-            
-    if not tensors:
-        text_desc = getattr(response, "text", "") or "No image returned by the Gemini model."
-        raise RuntimeError(f"Google Image Edit failed: {text_desc}")
-        
-    return torch.cat(tensors, dim=0)
+            tensor_img = torch.from_numpy(arr).unsqueeze(0)
+            if is_thought:
+                thought_tensors.append(tensor_img)
+            else:
+                tensors.append(tensor_img)
+
+    text_res = "\n".join(texts) if texts else ""
+
+    if tensors:
+        final_image = torch.cat(tensors, dim=0)
+    else:
+        final_image = torch.zeros((1, 1024, 1024, 3), dtype=torch.float32)
+
+    if thought_tensors:
+        thought_image = torch.cat(thought_tensors, dim=0)
+    else:
+        thought_image = torch.zeros((1, 1024, 1024, 3), dtype=torch.float32)
+
+    return final_image, text_res, thought_image
+

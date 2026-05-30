@@ -12,7 +12,9 @@ const TARGET_NODES = new Set([
   "LLMMiniXAIVideoExtend",
   "LLMMiniPersonaManager",
   "LLMMiniGoogleImagen",
-  "LLMMiniGoogleImageEdit",
+  "LLMMiniGoogleGeminiNanoBanana",
+  "LLMMiniGoogleGeminiNanoBananaPro",
+  "LLMMiniGoogleGeminiNanoBanana2",
 ]);
 
 function currentLocale() {
@@ -42,7 +44,13 @@ function updateCombo(node, name, values) {
   widget.type = "combo";
   widget.options = widget.options || {};
   widget.options.values = values;
-  if (!values.includes(widget.value)) widget.value = values[0];
+  const oldValue = widget.value;
+  if (!values.includes(widget.value)) {
+    widget.value = values[0];
+  }
+  if (widget.callback && widget.value !== oldValue) {
+    widget.callback(widget.value);
+  }
   node.setDirtyCanvas(true, true);
   if (node.graph) node.graph.setDirtyCanvas(true, true);
   return true;
@@ -288,7 +296,11 @@ function applyLocalization(node) {
     "aspect_ratio": { zh: "宽高比", en: "Aspect Ratio" },
     "resolution": { zh: "分辨率", en: "Resolution" },
     "duration": { zh: "时长", en: "Duration" },
-    "video": { zh: "视频", en: "Video" }
+    "video": { zh: "视频", en: "Video" },
+    "model": { zh: "模型", en: "Model" },
+    "response_modalities": { zh: "响应模态", en: "Response Modalities" },
+    "thinking_level": { zh: "思考级别", en: "Thinking Level" },
+    "files": { zh: "参考文件", en: "Reference Files" }
   };
 
   if (node.inputs) {
@@ -334,10 +346,40 @@ app.registerExtension({
         }, 100);
       }
       if (nodeData.name === "LLMMiniLoadPersona") {
-        this.size = [300, this.computeSize()[1]];
+        this.size = [250, this.computeSize()[1]];
       }
       if (nodeData.name === "LLMMiniPersonaManager") {
         setTimeout(() => setupPersonaManager(this), 50);
+      }
+      if (nodeData.name === "LLMMiniGoogleImagen") {
+        const modelWidget = findWidget(this, "model_name");
+        if (modelWidget) {
+          const updateResolutionOptions = (model) => {
+            const lowerModel = model ? model.toLowerCase() : "";
+            const isFast = lowerModel.includes("fast");
+            const isImagen = lowerModel.includes("imagen");
+            let resolutions;
+            if (isFast) {
+              resolutions = ["Default"];
+            } else if (isImagen) {
+              resolutions = ["512", "1K", "2K"];
+            } else {
+              resolutions = ["512", "1K", "2K", "4K"];
+            }
+            const resWidget = findWidget(this, "resolution");
+            const currentVal = resWidget ? resWidget.value : "";
+            updateCombo(this, "resolution", resolutions);
+            if (!isFast && isImagen && currentVal === "4K") {
+              if (resWidget) resWidget.value = "1K";
+            }
+          };
+          updateResolutionOptions(modelWidget.value);
+          const originalCallback = modelWidget.callback;
+          modelWidget.callback = function (value) {
+            if (originalCallback) originalCallback.apply(this, arguments);
+            updateResolutionOptions(value);
+          };
+        }
       }
       return result;
     };

@@ -1,5 +1,5 @@
 from .chat import ApiChatNode, PersonaNode, PersonaManagerNode
-from .image import OpenAICodexImageNode, XAIImagineNode, GoogleImagenNode, GoogleImageEditNode
+from .image import OpenAICodexImageNode, XAIImagineNode, GoogleImagenNode, GoogleGeminiNanoBananaNode, GoogleGeminiNanoBananaProNode, GoogleGeminiNanoBanana2Node
 from .video import XAIVideoEditNode, XAIVideoExtendNode, XAIVideoNode, XAIVideoReferenceNode
 
 NODE_CLASS_MAPPINGS = {
@@ -9,7 +9,9 @@ NODE_CLASS_MAPPINGS = {
     "LLMMiniOpenAICodexImage": OpenAICodexImageNode,
     "LLMMiniXAIImagine": XAIImagineNode,
     "LLMMiniGoogleImagen": GoogleImagenNode,
-    "LLMMiniGoogleImageEdit": GoogleImageEditNode,
+    "LLMMiniGoogleGeminiNanoBanana": GoogleGeminiNanoBananaNode,
+    "LLMMiniGoogleGeminiNanoBananaPro": GoogleGeminiNanoBananaProNode,
+    "LLMMiniGoogleGeminiNanoBanana2": GoogleGeminiNanoBanana2Node,
     "LLMMiniXAIVideo": XAIVideoNode,
     "LLMMiniXAIVideoReference": XAIVideoReferenceNode,
     "LLMMiniXAIVideoEdit": XAIVideoEditNode,
@@ -23,7 +25,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LLMMiniOpenAICodexImage": "OpenAI/Codex Image",
     "LLMMiniXAIImagine": "xAI Imagine",
     "LLMMiniGoogleImagen": "Google Imagen",
-    "LLMMiniGoogleImageEdit": "Google Image Edit",
+    "LLMMiniGoogleGeminiNanoBanana": "Nano Banana",
+    "LLMMiniGoogleGeminiNanoBananaPro": "Nano Banana Pro",
+    "LLMMiniGoogleGeminiNanoBanana2": "Nano Banana 2",
     "LLMMiniXAIVideo": "xAI Video",
     "LLMMiniXAIVideoReference": "xAI Multi-Reference Video",
     "LLMMiniXAIVideoEdit": "xAI Video Edit",

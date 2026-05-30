@@ -5,6 +5,7 @@ from uuid import uuid4
 from ..core.config import CREDENTIAL_SOURCE_API_KEY, CREDENTIAL_SOURCES, credential_input, provider_names, resolve_provider
 from ..core.persona import load_persona_text
 from ..providers.openai_compatible import ApiChatClient
+from ..core.status import StatusUpdater, get_unique_id
 
 
 def _chat_fingerprint(is_locked=True):
@@ -32,6 +33,9 @@ class ApiChatNode:
                 "image_url": ("STRING", {"forceInput": True}),
                 "stream": ("BOOLEAN", {"default": False}),
             },
+            "hidden": {
+                "unique_id": "UNIQUE_ID",
+            },
         }
 
     RETURN_TYPES = ("STRING", "STRING")
@@ -47,15 +51,17 @@ class ApiChatNode:
     def IS_CHANGED(cls, is_locked=True, **kwargs):
         return _chat_fingerprint(is_locked)
 
-    def chat(self, provider, model_name, system_prompt, user_prompt, temperature, max_tokens, is_locked=True, credential_source=CREDENTIAL_SOURCE_API_KEY, system_prompt_input="", history_json="", image=None, image_url="", stream=False, extra_parameters=None):
-        api_key = credential_input(provider, credential_source)
-        info = resolve_provider(provider, api_key)
-        final_system = (system_prompt or "") + ("\n" + system_prompt_input if system_prompt_input else "")
-        model_name = model_name if model_name != "click Refresh Models" else (info.get("default_models") or [""])[0]
-        client = ApiChatClient(provider=provider, model_name=model_name, api_key=info.get("api_key", ""), base_url=info.get("base_url", ""), credential_source=credential_source)
+    def chat(self, provider, model_name, system_prompt, user_prompt, temperature, max_tokens, is_locked=True, credential_source=CREDENTIAL_SOURCE_API_KEY, system_prompt_input="", history_json="", image=None, image_url="", stream=False, extra_parameters=None, unique_id=None):
+        node_id = get_unique_id(self, unique_id)
         try:
-            res = client.send(user_prompt, final_system, temperature, max_tokens, history_json, image, image_url, stream, extra_parameters)
-            return (res[0], res[1])
+            with StatusUpdater(node_id, f"Chatting ({provider})"):
+                api_key = credential_input(provider, credential_source)
+                info = resolve_provider(provider, api_key)
+                final_system = (system_prompt or "") + ("\n" + system_prompt_input if system_prompt_input else "")
+                model_name = model_name if model_name != "click Refresh Models" else (info.get("default_models") or [""])[0]
+                client = ApiChatClient(provider=provider, model_name=model_name, api_key=info.get("api_key", ""), base_url=info.get("base_url", ""), credential_source=credential_source)
+                res = client.send(user_prompt, final_system, temperature, max_tokens, history_json, image, image_url, stream, extra_parameters)
+                return (res[0], res[1])
         except Exception as exc:
             return (f"LLM Mini API request failed: {exc}", history_json or "")
 

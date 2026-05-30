@@ -12,6 +12,9 @@ def tensor_to_data_uri(image_tensor) -> str:
     import numpy as np
     from PIL import Image
 
+    # 自动对图像进行下采样，避免生成庞大的 base64 数据导致连接超时
+    image_tensor = downscale_image_tensor(image_tensor)
+
     if len(image_tensor.shape) == 3:
         image_tensor = image_tensor.unsqueeze(0)
     arr = 255.0 * image_tensor[0].detach().cpu().numpy()

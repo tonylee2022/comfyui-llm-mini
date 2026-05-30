@@ -86,6 +86,10 @@ def _merge_provider(provider_id: str, catalog: dict[str, dict[str, Any]], config
         "supports_video": existing.get("supports_video", False),
         "backend": config.get(section, "backend", fallback=existing.get("backend", "openai_compatible")),
     }
+    if config.has_section(section):
+        for option in config.options(section):
+            if option not in info:
+                info[option] = config.get(section, option)
     return info
 
 

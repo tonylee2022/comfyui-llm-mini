@@ -4,6 +4,23 @@
 
 Lightweight ComfyUI nodes for LLM provider access, personas, image generation, and xAI video.
 
+## Installation
+
+1. Navigate to ComfyUI's `custom_nodes` directory:
+   ```bash
+   cd ComfyUI/custom_nodes
+   ```
+2. Clone this repository:
+   ```bash
+   git clone https://github.com/tonylee2022/comfyui-llm-mini.git
+   ```
+3. Install the dependencies:
+   ```bash
+   cd comfyui-llm-mini
+   pip install -r requirements.txt
+   ```
+   *Note: If you are using the ComfyUI Portable version, please install using the embedded Python, e.g.: `..\..\..\python_embeded\python.exe -m pip install -r requirements.txt`.*
+
 ## Features
 
 - Provider-first API chat node with model list refresh in the node UI.
@@ -13,16 +30,6 @@ Lightweight ComfyUI nodes for LLM provider access, personas, image generation, a
 - Persona `.txt` files as system prompt inputs.
 - Shared OpenAI/Codex image panel with separate backend implementations.
 - xAI Imagine and xAI Video nodes.
-
-## Attribution
-
-This project includes code and behavior adapted from `comfyui_LLM_party`:
-https://github.com/heshengtao/comfyui_LLM_party
-
-Original copyright:
-Copyright (C) 2024 heshengtao <hst97@qq.com>
-
-`comfyui_LLM_party` is licensed under the GNU Affero General Public License v3.0. This project is distributed under the same license.
 
 ## Configuration
 
@@ -61,3 +68,13 @@ Restart ComfyUI and the chat node provider menu will show `local_proxy` (or your
 ### Google (Gemini) Authorization
 
 Google nodes use your Gemini API key. Put your free API key in the `[provider.google]` section of `config.ini`. Access all models (text/image/video).
+
+## Attribution
+
+This project includes code and behavior adapted from `comfyui_LLM_party`:
+https://github.com/heshengtao/comfyui_LLM_party
+
+Original copyright:
+Copyright (C) 2024 heshengtao <hst97@qq.com>
+
+`comfyui_LLM_party` is licensed under the GNU Affero General Public License v3.0. This project is distributed under the same license.

@@ -116,31 +116,43 @@ def send_anthropic_chat(api_key: str, model: str, messages: list[dict], temperat
     return "\n".join(block.text for block in response.content if getattr(block, "type", "") == "text").strip()
 
 
-def list_gemini_models(api_key: str, credential_source: str, defaults: list[str]) -> list[str]:
+def list_gemini_models(api_key: str, credential_source: str, defaults: list[str], base_url: str = "") -> list[str]:
     if not api_key:
         return defaults
-    try:
-        from google import genai
 
-        client = genai.Client(api_key=api_key)
-        models = []
-        for model in client.models.list():
-            name = getattr(model, "name", "")
-            if name.startswith("models/"):
-                name = name.removeprefix("models/")
-            if name:
-                models.append(name)
-        merged = list(models)
-        for d in defaults:
-            if d and d.lower() != "click refresh models" and d not in merged:
-                merged.append(d)
-        return merged or defaults
-    except Exception as exc:
-        print(f"[LLM Mini] Gemini model list failed: {exc}")
-        return defaults
+    import time
+    from google import genai
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            client_kwargs = {"api_key": api_key}
+            http_options: dict = {"timeout": 60_000}
+            if base_url:
+                http_options["base_url"] = base_url
+            client_kwargs["http_options"] = http_options
+            client = genai.Client(**client_kwargs)
+            models = []
+            for model in client.models.list():
+                name = getattr(model, "name", "")
+                if name.startswith("models/"):
+                    name = name.removeprefix("models/")
+                if name:
+                    models.append(name)
+            merged = list(models)
+            for d in defaults:
+                if d and d.lower() != "click refresh models" and d not in merged:
+                    merged.append(d)
+            return merged or defaults
+        except Exception as exc:
+            print(f"[LLM Mini] Gemini model list attempt {attempt + 1}/{max_retries} failed: {exc}")
+            if attempt < max_retries - 1:
+                time.sleep(2)
+    print("[LLM Mini] Gemini model list failed after all retries, using defaults.")
+    return defaults
 
 
-def send_gemini_sdk_chat(api_key: str, model: str, messages: list[dict], temperature: float, max_tokens: int, extra_parameters: dict) -> str:
+def send_gemini_sdk_chat(api_key: str, model: str, messages: list[dict], temperature: float, max_tokens: int, extra_parameters: dict, base_url: str = "") -> str:
     if not api_key:
         raise RuntimeError("No Gemini API key found for selected provider.")
     from google import genai
@@ -182,6 +194,12 @@ def send_gemini_sdk_chat(api_key: str, model: str, messages: list[dict], tempera
     if system:
         config_kwargs["system_instruction"] = system
     config = types.GenerateContentConfig(**config_kwargs)
-    client = genai.Client(api_key=api_key)
+
+    client_kwargs = {"api_key": api_key}
+    http_options: dict = {"timeout": 180_000}
+    if base_url:
+        http_options["base_url"] = base_url
+    client_kwargs["http_options"] = http_options
+    client = genai.Client(**client_kwargs)
     response = client.models.generate_content(model=model, contents=contents, config=config)
     return getattr(response, "text", "") or ""

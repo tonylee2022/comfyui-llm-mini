@@ -149,19 +149,61 @@
       "image": { "name": "图像" }
     }
   },
-  "LLMMiniGoogleImageEdit": {
-    "display_name": "Google 图像编辑",
+  "LLMMiniGoogleGeminiNanoBanana": {
+    "display_name": "Nano Banana",
     "inputs": {
       "prompt": { "name": "提示词" },
-      "model_name": { "name": "模型" },
+      "model": { "name": "模型" },
       "images": { "name": "参考图像", "tooltip": "可选参考图。连接后会自动增加新的图像输入。" },
+      "files": { "name": "参考文件" },
       "aspect_ratio": { "name": "宽高比" },
-      "resolution": { "name": "分辨率" },
+      "response_modalities": { "name": "响应模态" },
+      "system_prompt": { "name": "系统提示词" },
       "seed": { "name": "随机种" },
       "credential_source": { "name": "凭据来源" }
     },
     "outputs": {
-      "image": { "name": "图像" }
+      "image": { "name": "图像" },
+      "text": { "name": "文本" }
+    }
+  },
+  "LLMMiniGoogleGeminiNanoBananaPro": {
+    "display_name": "Nano Banana Pro",
+    "inputs": {
+      "prompt": { "name": "提示词" },
+      "model": { "name": "模型" },
+      "images": { "name": "参考图像", "tooltip": "可选参考图。连接后会自动增加新的图像输入。" },
+      "files": { "name": "参考文件" },
+      "aspect_ratio": { "name": "宽高比" },
+      "resolution": { "name": "分辨率" },
+      "response_modalities": { "name": "响应模态" },
+      "system_prompt": { "name": "系统提示词" },
+      "seed": { "name": "随机种" },
+      "credential_source": { "name": "凭据来源" }
+    },
+    "outputs": {
+      "image": { "name": "图像" },
+      "text": { "name": "文本" }
+    }
+  },
+  "LLMMiniGoogleGeminiNanoBanana2": {
+    "display_name": "Nano Banana 2",
+    "inputs": {
+      "prompt": { "name": "提示词" },
+      "model": { "name": "模型" },
+      "images": { "name": "参考图像", "tooltip": "可选参考图。连接后会自动增加新的图像输入。" },
+      "files": { "name": "参考文件" },
+      "aspect_ratio": { "name": "宽高比" },
+      "resolution": { "name": "分辨率" },
+      "response_modalities": { "name": "响应模态" },
+      "thinking_level": { "name": "思考级别" },
+      "system_prompt": { "name": "系统提示词" },
+      "seed": { "name": "随机种" },
+      "credential_source": { "name": "凭据来源" }
+    },
+    "outputs": {
+      "image": { "name": "图像" },
+      "text": { "name": "文本" }
     }
   }
 }
