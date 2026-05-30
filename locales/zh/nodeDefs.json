@@ -1,0 +1,167 @@
+{
+  "LLMMiniApiChat": {
+    "display_name": "API 聊天",
+    "inputs": {
+      "provider": { "name": "提供商" },
+      "model_name": { "name": "模型" },
+      "system_prompt": { "name": "系统提示词" },
+      "user_prompt": { "name": "用户提示词" },
+      "temperature": { "name": "温度" },
+      "max_tokens": { "name": "最大 Token" },
+      "is_locked": { "name": "锁定缓存", "tooltip": "开启时相同输入不会重复执行；关闭时每次都会重新请求。" },
+      "credential_source": { "name": "凭据来源" },
+      "system_prompt_input": { "name": "加载人格面具" },
+      "image": { "name": "图像" },
+      "image_url": { "name": "图像 URL" },
+      "stream": { "name": "流式输出" }
+    },
+    "outputs": {
+      "assistant_response": { "name": "助手回复" },
+      "history_json": { "name": "历史记录 JSON" }
+    }
+  },
+  "LLMMiniLoadPersona": {
+    "display_name": "加载人格面具",
+    "inputs": {
+      "persona_name": { "name": "人格面具" },
+      "text": { "name": "文本" }
+    },
+    "outputs": {
+      "system_prompt_input": { "name": "系统提示词输入" }
+    }
+  },
+  "LLMMiniOpenAICodexImage": {
+    "display_name": "OpenAI/Codex 图像",
+    "inputs": {
+      "prompt": { "name": "提示词" },
+      "execution_backend": { "name": "执行后端" },
+      "model_name": { "name": "模型" },
+      "size": { "name": "尺寸" },
+      "quality": { "name": "质量" },
+      "background": { "name": "背景" },
+      "n": { "name": "数量" },
+      "seed": { "name": "随机种" },
+      "images": { "name": "参考图像", "tooltip": "可选参考图。连接后会自动增加新的图像输入。" },
+      "mask": { "name": "遮罩" }
+    },
+    "outputs": {
+      "image": { "name": "图像" }
+    }
+  },
+  "LLMMiniXAIImagine": {
+    "display_name": "xAI 图像生成",
+    "inputs": {
+      "prompt": { "name": "提示词" },
+      "model_name": { "name": "模型" },
+      "aspect_ratio": { "name": "宽高比" },
+      "resolution": { "name": "分辨率" },
+      "seed": { "name": "随机种" },
+      "images": { "name": "参考图像", "tooltip": "可选参考图。连接后会自动增加新的图像输入。" },
+      "credential_source": { "name": "凭据来源" }
+    },
+    "outputs": {
+      "image": { "name": "图像" }
+    }
+  },
+  "LLMMiniXAIVideo": {
+    "display_name": "xAI 视频生成",
+    "inputs": {
+      "prompt": { "name": "提示词" },
+      "model_name": { "name": "模型" },
+      "aspect_ratio": { "name": "宽高比" },
+      "resolution": { "name": "分辨率" },
+      "duration": { "name": "时长" },
+      "seed": { "name": "随机种" },
+      "image": { "name": "图像" },
+      "credential_source": { "name": "凭据来源" }
+    },
+    "outputs": {
+      "video": { "name": "视频" }
+    }
+  },
+  "LLMMiniXAIVideoReference": {
+    "display_name": "xAI 多参考图视频",
+    "inputs": {
+      "prompt": { "name": "提示词" },
+      "model_name": { "name": "模型" },
+      "aspect_ratio": { "name": "宽高比" },
+      "resolution": { "name": "分辨率" },
+      "duration": { "name": "时长" },
+      "seed": { "name": "随机种" },
+      "images": { "name": "参考图像", "tooltip": "参考图。连接后会自动增加新的图像输入。" },
+      "credential_source": { "name": "凭据来源" }
+    },
+    "outputs": {
+      "video": { "name": "视频" }
+    }
+  },
+  "LLMMiniXAIVideoEdit": {
+    "display_name": "xAI 视频编辑",
+    "inputs": {
+      "prompt": { "name": "提示词" },
+      "model_name": { "name": "模型" },
+      "video": { "name": "视频" },
+      "seed": { "name": "随机种" },
+      "credential_source": { "name": "凭据来源" }
+    },
+    "outputs": {
+      "video": { "name": "视频" }
+    }
+  },
+  "LLMMiniXAIVideoExtend": {
+    "display_name": "xAI 视频延长",
+    "inputs": {
+      "prompt": { "name": "提示词" },
+      "model_name": { "name": "模型" },
+      "video": { "name": "视频" },
+      "duration": { "name": "时长" },
+      "seed": { "name": "随机种" },
+      "credential_source": { "name": "凭据来源" }
+    },
+    "outputs": {
+      "video": { "name": "视频" }
+    }
+  },
+  "LLMMiniPersonaManager": {
+    "display_name": "管理人格面具",
+    "inputs": {
+      "persona_name": { "name": "人格面具" },
+      "new_name": { "name": "新名称", "tooltip": "创建新的人格面具或另存为时使用。" },
+      "content": { "name": "面具内容" }
+    },
+    "outputs": {
+      "system_prompt_input": { "name": "系统提示词输入" }
+    }
+  },
+  "LLMMiniGoogleImagen": {
+    "display_name": "Google 图像生成",
+    "inputs": {
+      "prompt": { "name": "提示词" },
+      "model_name": { "name": "模型" },
+      "aspect_ratio": { "name": "宽高比" },
+      "resolution": { "name": "分辨率" },
+      "quality": { "name": "图像质量" },
+      "n": { "name": "数量", "tooltip": "仅对 Imagen 专属模型生效。" },
+      "seed": { "name": "随机种" },
+      "credential_source": { "name": "凭据来源" }
+    },
+    "outputs": {
+      "image": { "name": "图像" }
+    }
+  },
+  "LLMMiniGoogleImageEdit": {
+    "display_name": "Google 图像编辑",
+    "inputs": {
+      "prompt": { "name": "提示词" },
+      "model_name": { "name": "模型" },
+      "images": { "name": "参考图像", "tooltip": "可选参考图。连接后会自动增加新的图像输入。" },
+      "aspect_ratio": { "name": "宽高比" },
+      "resolution": { "name": "分辨率" },
+      "seed": { "name": "随机种" },
+      "credential_source": { "name": "凭据来源" }
+    },
+    "outputs": {
+      "image": { "name": "图像" }
+    }
+  }
+}
