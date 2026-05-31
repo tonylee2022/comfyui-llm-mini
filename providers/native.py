@@ -190,9 +190,31 @@ def send_gemini_sdk_chat(api_key: str, model: str, messages: list[dict], tempera
             parts.append(types.Part.from_text(text=str(content_data)))
         contents.append(types.Content(role=role, parts=parts))
 
+    thinking_level = extra_parameters.pop("thinking_level", "auto")
     config_kwargs = {"temperature": temperature, "max_output_tokens": max_tokens, **extra_parameters}
     if system:
         config_kwargs["system_instruction"] = system
+    if thinking_level and thinking_level != "auto":
+        is_gemini_3 = "gemini-3" in model.lower()
+        if is_gemini_3:
+            level_str = thinking_level.lower()
+            if level_str == "disabled":
+                level_str = "minimal"
+            config_kwargs["thinking_config"] = types.ThinkingConfig(
+                thinking_level=level_str
+            )
+        else:
+            budget_map = {
+                "disabled": 0,
+                "low": 1024,
+                "medium": 2048,
+                "high": 4096
+            }
+            budget = budget_map.get(thinking_level, -1)
+            if budget >= 0:
+                config_kwargs["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget=budget
+                )
     config = types.GenerateContentConfig(**config_kwargs)
 
     client_kwargs = {"api_key": api_key}

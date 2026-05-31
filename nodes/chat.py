@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+from comfy_api.latest import IO
 from ..core.config import CREDENTIAL_SOURCE_API_KEY, CREDENTIAL_SOURCES, credential_input, provider_names, resolve_provider
 from ..core.persona import load_persona_text
 from ..providers.openai_compatible import ApiChatClient
@@ -12,47 +13,58 @@ def _chat_fingerprint(is_locked=True):
     return "locked" if is_locked else uuid4().hex
 
 
-class ApiChatNode:
+class ApiChatNode(IO.ComfyNode):
     @classmethod
-    def INPUT_TYPES(cls):
+    def define_schema(cls):
         providers = provider_names()
-        return {
-            "required": {
-                "provider": (providers, {"default": providers[0]}),
-                "model_name": (["click Refresh Models"], {"default": "click Refresh Models"}),
-                "system_prompt": ("STRING", {"multiline": True, "default": ""}),
-                "user_prompt": ("STRING", {"multiline": True, "default": ""}),
-                "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0, "step": 0.1}),
-                "max_tokens": ("INT", {"default": 2048, "min": 1, "max": 128000, "step": 128}),
-            },
-            "optional": {
-                "is_locked": ("BOOLEAN", {"default": True}),
-                "credential_source": (CREDENTIAL_SOURCES, {"default": CREDENTIAL_SOURCE_API_KEY}),
-                "system_prompt_input": ("STRING", {"forceInput": True}),
-                "image": ("IMAGE", {"forceInput": True}),
-                "image_url": ("STRING", {"forceInput": True}),
-                "stream": ("BOOLEAN", {"default": False}),
-            },
-            "hidden": {
-                "unique_id": "UNIQUE_ID",
-            },
-        }
-
-    RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("assistant_response", "history_json")
-    FUNCTION = "chat"
-    CATEGORY = "ComfyUI LLM Mini/Chat"
+        return IO.Schema(
+            node_id="LLMMiniApiChat",
+            display_name="API Chat",
+            category="ComfyUI LLM Mini/Chat",
+            inputs=[
+                IO.String.Input("system_prompt_input", optional=True, force_input=True),
+                IO.Autogrow.Input(
+                    "images",
+                    template=IO.Autogrow.TemplateNames(
+                        IO.Image.Input("image", optional=True),
+                        names=[f"image_{i}" for i in range(1, 17)],
+                        min=0,
+                    ),
+                    optional=True,
+                    tooltip="Optional reference images. Add image inputs dynamically as needed.",
+                ),
+                IO.Combo.Input("provider", options=providers, default=providers[0] if providers else ""),
+                IO.Combo.Input("model_name", options=["click Refresh Models"], default="click Refresh Models"),
+                IO.String.Input("system_prompt", multiline=True, default=""),
+                IO.String.Input("user_prompt", multiline=True, default=""),
+                IO.Float.Input("temperature", default=0.7, min=0.0, max=2.0, step=0.1),
+                IO.Int.Input("max_tokens", default=2048, min=1, max=128000, step=128),
+                IO.Boolean.Input("is_locked", default=True),
+                IO.Combo.Input("credential_source", options=CREDENTIAL_SOURCES, default=CREDENTIAL_SOURCE_API_KEY),
+                IO.Combo.Input("thinking_level", options=["auto", "disabled", "low", "medium", "high"], default="auto"),
+                IO.String.Input("image_url", optional=True),
+                IO.Boolean.Input("stream", default=False),
+            ],
+            outputs=[
+                IO.String.Output("assistant_response"),
+                IO.String.Output("history_json"),
+            ],
+            hidden=[
+                IO.Hidden.unique_id,
+            ],
+        )
 
     @classmethod
-    def VALIDATE_INPUTS(cls, model_name=None, credential_source=None):
+    def validate_inputs(cls, model_name=None, credential_source=None, **kwargs):
         return True
 
     @classmethod
-    def IS_CHANGED(cls, is_locked=True, **kwargs):
+    def fingerprint_inputs(cls, is_locked=True, **kwargs):
         return _chat_fingerprint(is_locked)
 
-    def chat(self, provider, model_name, system_prompt, user_prompt, temperature, max_tokens, is_locked=True, credential_source=CREDENTIAL_SOURCE_API_KEY, system_prompt_input="", history_json="", image=None, image_url="", stream=False, extra_parameters=None, unique_id=None):
-        node_id = get_unique_id(self, unique_id)
+    @classmethod
+    def execute(cls, system_prompt_input="", images=None, provider=None, model_name=None, system_prompt="", user_prompt="", temperature=0.7, max_tokens=2048, is_locked=True, credential_source=CREDENTIAL_SOURCE_API_KEY, thinking_level="auto", image_url="", stream=False):
+        node_id = get_unique_id(cls)
         try:
             with StatusUpdater(node_id, f"Chatting ({provider})"):
                 api_key = credential_input(provider, credential_source)
@@ -60,10 +72,38 @@ class ApiChatNode:
                 final_system = (system_prompt or "") + ("\n" + system_prompt_input if system_prompt_input else "")
                 model_name = model_name if model_name != "click Refresh Models" else (info.get("default_models") or [""])[0]
                 client = ApiChatClient(provider=provider, model_name=model_name, api_key=info.get("api_key", ""), base_url=info.get("base_url", ""), credential_source=credential_source)
-                res = client.send(user_prompt, final_system, temperature, max_tokens, history_json, image, image_url, stream, extra_parameters)
+                
+                # Gather image tensors from images Autogrow dict/list/tuple
+                image_tensors = list(images) if isinstance(images, (list, tuple)) else ([images] if images is not None else [])
+                if isinstance(images, dict):
+                    image_tensors = [t for t in images.values() if t is not None]
+                
+                # Expand any batched image tensors
+                expanded_images = []
+                for img in image_tensors:
+                    if hasattr(img, "shape") and len(img.shape) == 4 and img.shape[0] > 1:
+                        for b in range(img.shape[0]):
+                            expanded_images.append(img[b : b + 1])
+                    else:
+                        expanded_images.append(img)
+                
+                # Filter out None and keep only valid image tensors
+                valid_images = [img for img in expanded_images if img is not None]
+                
+                res = client.send(
+                    user_prompt=user_prompt,
+                    system_prompt=final_system,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    history_json="",
+                    image=valid_images if valid_images else None,
+                    image_url=image_url,
+                    stream=stream,
+                    thinking_level=thinking_level
+                )
                 return (res[0], res[1])
         except Exception as exc:
-            return (f"LLM Mini API request failed: {exc}", history_json or "")
+            raise RuntimeError(f"LLM Mini API request failed: {exc}")
 
 
 class PersonaNode:

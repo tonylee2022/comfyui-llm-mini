@@ -48,7 +48,7 @@ def xai_image(prompt: str, model: str, aspect_ratio: str, resolution: str, api_k
 
 def poll_video(request_id: str, base_url: str, api_key: str, status_updater=None) -> str:
     status_url = base_url + f"videos/{request_id}"
-    for _ in range(120):
+    for _ in range(360):
         time.sleep(5)
         response = requests.get(status_url, headers={"Authorization": f"Bearer {api_key}"}, timeout=30)
         log_http_response("GET", status_url, response)
@@ -100,9 +100,22 @@ def xai_video(prompt: str, model: str, aspect_ratio: str, resolution: str, durat
 
 def xai_video_reference(prompt: str, model: str, aspect_ratio: str, resolution: str, duration: int, seed: int, api_key: str, base_url: str, images: list, status_updater=None):
     valid_images = [img for img in images if img is not None]
-    total_imgs = len(valid_images)
+    
+    # Expand any batched image tensors
+    expanded_images = []
+    for img in valid_images:
+        if hasattr(img, "shape") and len(img.shape) == 4 and img.shape[0] > 1:
+            for b in range(img.shape[0]):
+                expanded_images.append(img[b : b + 1])
+        else:
+            expanded_images.append(img)
+            
+    # Truncate to maximum 7 images (API limit)
+    expanded_images = expanded_images[:7]
+    total_imgs = len(expanded_images)
+    
     refs = []
-    for i, img in enumerate(valid_images):
+    for i, img in enumerate(expanded_images):
         if status_updater:
             status_updater.update_status(f"Uploading image {i + 1}/{total_imgs}")
         refs.append({"url": tensor_to_data_uri(img)})

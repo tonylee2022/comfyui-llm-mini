@@ -1,0 +1,13 @@
+ENVIRONMENTAL REALISM RULES
+
+Environmental motion must remain subtle and physically justified.
+
+Wind effects should only appear when wind is present.
+
+Hair, clothing, foliage and particles should respond consistently to the same wind direction and intensity.
+
+Water movement should follow realistic fluid behavior.
+
+Avoid excessive environmental animation.
+
+Environment should support the scene, not become the focus.

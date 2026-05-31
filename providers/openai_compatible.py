@@ -123,10 +123,32 @@ class ApiChatClient:
     base_url: str
     credential_source: str = ""
 
-    def send(self, user_prompt: str, system_prompt: str, temperature: float, max_tokens: int, history_json: str = "", image=None, image_url: str = "", stream: bool = False, extra_parameters: dict | None = None) -> tuple[str, str, str]:
-        extra_parameters = extra_parameters or {}
+    def send(self, user_prompt: str, system_prompt: str, temperature: float, max_tokens: int, history_json: str = "", image=None, image_url: str = "", stream: bool = False, extra_parameters: dict | None = None, thinking_level: str = "auto") -> tuple[str, str, str]:
+        extra_parameters = (extra_parameters or {}).copy()
+        if thinking_level and thinking_level != "auto":
+            model_name_lower = self.model_name.lower()
+            is_xai = (
+                self.provider == "xai" or
+                any(x in model_name_lower for x in ["grok", "build-0.1", "4.20", "4.3"])
+            )
+            is_gpt5 = any(x in model_name_lower for x in ["gpt-5.4", "gpt-5.5", "gpt-5"])
+            is_o_series = any(x in model_name_lower for x in ["o1", "o3"])
+            
+            is_reasoning_model = is_xai or is_gpt5 or is_o_series
+            
+            if is_reasoning_model:
+                disabled_val = "none" if (is_xai or is_gpt5) else "low"
+                effort_map = {
+                    "disabled": disabled_val,
+                    "low": "low",
+                    "medium": "medium",
+                    "high": "high"
+                }
+                extra_parameters["reasoning_effort"] = effort_map.get(thinking_level, "medium")
         provider_info = resolve_provider(self.provider, self.api_key, self.base_url)
         backend = provider_info.get("backend", "openai_compatible")
+        if backend == "gemini" and thinking_level:
+            extra_parameters["thinking_level"] = thinking_level
         api_key, base_url, oauth_provider = resolve_oauth_marker(provider_info.get("api_key", ""), self.provider, provider_info.get("base_url", ""), self.model_name)
         base_url = ensure_version_suffix(base_url)
         if not api_key and self.provider != "ollama":
@@ -143,9 +165,18 @@ class ApiChatClient:
         image_items = []
         if image is not None:
             tensors = list(image) if isinstance(image, (list, tuple)) else [image]
-            image_items.extend({"type": "image_url", "image_url": {"url": tensor_to_data_uri(t)}} for t in tensors if t is not None)
-        if image_url:
-            image_items.append({"type": "image_url", "image_url": {"url": image_url}})
+            expanded_tensors = []
+            for t in tensors:
+                if t is not None:
+                    if hasattr(t, "shape") and len(t.shape) == 4 and t.shape[0] > 1:
+                        for b in range(t.shape[0]):
+                            expanded_tensors.append(t[b : b + 1])
+                    else:
+                        expanded_tensors.append(t)
+            image_items.extend({"type": "image_url", "image_url": {"url": tensor_to_data_uri(t)}} for t in expanded_tensors if t is not None)
+        clean_url = str(image_url or "").strip()
+        if clean_url and (clean_url.startswith("http://") or clean_url.startswith("https://") or clean_url.startswith("data:")):
+            image_items.append({"type": "image_url", "image_url": {"url": clean_url}})
         if image_items:
             content = [{"type": "text", "text": user_prompt}, *image_items]
         messages.append({"role": "user", "content": content})

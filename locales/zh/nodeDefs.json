@@ -11,7 +11,8 @@
       "is_locked": { "name": "锁定缓存", "tooltip": "开启时相同输入不会重复执行；关闭时每次都会重新请求。" },
       "credential_source": { "name": "凭据来源" },
       "system_prompt_input": { "name": "加载人格面具" },
-      "image": { "name": "图像" },
+      "thinking_level": { "name": "思考级别" },
+      "images": { "name": "参考图像", "tooltip": "可选参考图（支持多张图或图像批次）。连接后会自动增加新的图像输入。" },
       "image_url": { "name": "图像 URL" },
       "stream": { "name": "流式输出" }
     },
@@ -88,7 +89,7 @@
       "resolution": { "name": "分辨率" },
       "duration": { "name": "时长" },
       "seed": { "name": "随机种" },
-      "images": { "name": "参考图像", "tooltip": "参考图。连接后会自动增加新的图像输入。" },
+      "images": { "name": "参考图像", "tooltip": "参考图（最多7张）。连接后会自动增加新的图像输入。在提示词中可以使用 @Image1, @Image2 等来指代它们。" },
       "credential_source": { "name": "凭据来源" }
     },
     "outputs": {
