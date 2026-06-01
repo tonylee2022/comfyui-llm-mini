@@ -279,7 +279,7 @@ def run_redirect_flow(provider: str, custom_client_id: str = "", custom_client_s
     client_secret = custom_client_secret or creds["client_secret"]
     port = 56121 if provider == "xai" else 1455
     redirect_uri = f"http://127.0.0.1:{port}/callback" if provider == "xai" else "http://localhost:1455/auth/callback"
-    server = HTTPServer(("127.0.0.1", port), CallbackHandler)
+    server = HTTPServer(("0.0.0.0", port), CallbackHandler)
     server.auth_code = None
     server.auth_state = None
     verifier, challenge = generate_pkce_pair()
@@ -528,7 +528,7 @@ def _start_async_browser_flow(provider: str) -> dict:
     port = 56121 if provider == "xai" else 1455
     redirect_uri = f"http://127.0.0.1:{port}/callback" if provider == "xai" else "http://localhost:1455/auth/callback"
     
-    server = HTTPServer(("127.0.0.1", port), CallbackHandler)
+    server = HTTPServer(("0.0.0.0", port), CallbackHandler)
     server.auth_code = None
     server.auth_state = None
     
