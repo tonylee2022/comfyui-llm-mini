@@ -7,7 +7,7 @@ import requests
 
 from ..core.config import normalize_base_url, resolve_provider
 from ..core.http_logging import log_http_response
-from ..core.media import download_video_to_comfy, get_video_path_from_input, image_source_to_tensor, tensor_to_data_uri, video_to_data_uri
+from ..core.media import download_video_to_comfy, get_video_path_from_input, image_source_to_tensor, tensor_to_data_uri
 from ..core.oauth import get_oauth_token
 
 
@@ -25,7 +25,6 @@ ERROR_TRANSLATIONS = {
 
 def _get_comfyui_locale() -> str:
     import json
-    import os
     paths_to_try = []
     try:
         # 尝试从当前文件位置回溯三级去找 ComfyUI 的配置目录
@@ -203,7 +202,7 @@ def submit_video(payload: dict, endpoint: str, api_key: str, base_url: str, stat
 
 
 def xai_video(prompt: str, model: str, aspect_ratio: str, resolution: str, duration: int, seed: int, api_key: str, base_url: str, image=None, status_updater=None):
-    payload = {"model": "grok-imagine-video" if model == "grok-imagine-video-beta" else model, "prompt": prompt, "duration": duration, "resolution": resolution, "seed": seed}
+    payload = {"model": model, "prompt": prompt, "duration": duration, "resolution": resolution, "seed": seed}
     if aspect_ratio != "auto":
         payload["aspect_ratio"] = aspect_ratio
     if image is not None:
@@ -238,7 +237,7 @@ def xai_video_reference(prompt: str, model: str, aspect_ratio: str, resolution: 
         refs.append({"url": tensor_to_data_uri(img)})
     if not refs:
         raise RuntimeError("Reference video generation requires at least one image.")
-    payload = {"model": "grok-imagine-video" if model == "grok-imagine-video-beta" else model, "prompt": prompt, "duration": duration, "resolution": resolution, "seed": seed, "reference_images": refs}
+    payload = {"model": model, "prompt": prompt, "duration": duration, "resolution": resolution, "seed": seed, "reference_images": refs}
     if aspect_ratio != "auto":
         payload["aspect_ratio"] = aspect_ratio
     if status_updater:
@@ -261,7 +260,7 @@ def xai_video_edit(prompt: str, model: str, video, seed: int, api_key: str, base
         file_id = upload_xai_file(path, key, base)
         
         payload = {
-            "model": "grok-imagine-video" if model == "grok-imagine-video-beta" else model,
+            "model": model,
             "video": {"file_id": file_id},
             "prompt": prompt,
             "seed": seed
@@ -301,7 +300,7 @@ def xai_video_extend(prompt: str, model: str, video, duration: int, seed: int, a
         file_id = upload_xai_file(path, key, base)
         
         payload = {
-            "model": "grok-imagine-video" if model == "grok-imagine-video-beta" else model,
+            "model": model,
             "video": {"file_id": file_id},
             "prompt": prompt,
             "duration": duration
