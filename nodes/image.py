@@ -235,7 +235,7 @@ class GoogleGeminiNanoBananaNode(IO.ComfyNode):
                 if isinstance(images, dict):
                     image_tensors = [t for t in images.values() if t is not None]
 
-                res_image, res_text, _ = google_gemini_image_generate(
+                res_image, res_text = google_gemini_image_generate(
                     prompt=prompt,
                     model=model,
                     image_tensors=image_tensors,
@@ -252,7 +252,6 @@ class GoogleGeminiNanoBananaNode(IO.ComfyNode):
                 return (res_image, res_text)
         except Exception as exc:
             _format_error("Nano Banana", exc)
-            import torch
             return (_error_image(), str(exc))
 
 
@@ -304,16 +303,13 @@ class GoogleGeminiNanoBananaProNode(IO.ComfyNode):
                 api_key = info.get("api_key", "")
                 base_url = info.get("base_url", "")
 
-                real_model = model
-
                 image_tensors = list(images) if isinstance(images, (list, tuple)) else ([images] if images is not None else [])
                 if isinstance(images, dict):
                     image_tensors = [t for t in images.values() if t is not None]
 
-                res_image, res_text, _ = google_gemini_image_generate(
+                res_image, res_text = google_gemini_image_generate(
                     prompt=prompt,
-                    model=real_model,
-                    image_tensors=image_tensors,
+                    model=model,
                     files=files,
                     aspect_ratio=aspect_ratio,
                     resolution=resolution,
@@ -327,7 +323,6 @@ class GoogleGeminiNanoBananaProNode(IO.ComfyNode):
                 return (res_image, res_text)
         except Exception as exc:
             _format_error("Nano Banana Pro", exc)
-            import torch
             return (_error_image(), str(exc))
 
 
@@ -380,16 +375,13 @@ class GoogleGeminiNanoBanana2Node(IO.ComfyNode):
                 api_key = info.get("api_key", "")
                 base_url = info.get("base_url", "")
 
-                real_model = model
-
                 image_tensors = list(images) if isinstance(images, (list, tuple)) else ([images] if images is not None else [])
                 if isinstance(images, dict):
                     image_tensors = [t for t in images.values() if t is not None]
 
-                res_image, res_text, _ = google_gemini_image_generate(
+                res_image, res_text = google_gemini_image_generate(
                     prompt=prompt,
-                    model=real_model,
-                    image_tensors=image_tensors,
+                    model=model,
                     files=files,
                     aspect_ratio=aspect_ratio,
                     resolution=resolution,

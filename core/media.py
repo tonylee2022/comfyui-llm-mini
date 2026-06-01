@@ -62,11 +62,6 @@ def downscale_image_tensor(image_tensor, max_pixels: int = 2048 * 2048):
     return temp.permute(0, 2, 3, 1)
 
 
-def video_to_data_uri(video_path: str) -> str:
-    with open(video_path, "rb") as f:
-        return "data:video/mp4;base64," + base64.b64encode(f.read()).decode("utf-8")
-
-
 def transcode_to_h264_mp4(input_path: str) -> str:
     import subprocess
     import tempfile

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import shutil
-import subprocess
 
 from core.oauth import run_device_code_flow, run_redirect_flow
 

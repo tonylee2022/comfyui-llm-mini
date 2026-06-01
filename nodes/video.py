@@ -7,33 +7,33 @@ from ..providers.xai import xai_video, xai_video_edit, xai_video_extend, xai_vid
 from ..core.status import StatusUpdater, get_unique_id
 
 
-class XAIVideoNode:
+class XAIVideoNode(IO.ComfyNode):
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "prompt": ("STRING", {"multiline": True, "default": ""}),
-                "model_name": (["grok-imagine-video", "grok-imagine-video-1.5-preview"], {"default": "grok-imagine-video"}),
-                "aspect_ratio": (["auto", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16"], {"default": "auto"}),
-                "resolution": (["720p", "480p"], {"default": "720p"}),
-                "duration": ("INT", {"default": 6, "min": 1, "max": 15, "step": 1}),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647, "step": 1}),
-            },
-            "optional": {
-                "image": ("IMAGE",),
-            },
-            "hidden": {
-                "unique_id": "UNIQUE_ID",
-            },
-        }
+    def define_schema(cls):
+        return IO.Schema(
+            node_id="LLMMiniXAIVideo",
+            display_name="xAI Video",
+            category="ComfyUI LLM Mini/Video/xAI",
+            inputs=[
+                IO.String.Input("prompt", multiline=True, default=""),
+                IO.Combo.Input("model_name", options=["grok-imagine-video", "grok-imagine-video-1.5-preview"], default="grok-imagine-video"),
+                IO.Combo.Input("aspect_ratio", options=["auto", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16"], default="auto"),
+                IO.Combo.Input("resolution", options=["720p", "480p"], default="720p"),
+                IO.Int.Input("duration", default=6, min=1, max=15, step=1),
+                IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1),
+                IO.Image.Input("image", optional=True),
+            ],
+            outputs=[
+                IO.Video.Output("video"),
+            ],
+            hidden=[
+                IO.Hidden.unique_id,
+            ],
+        )
 
-    RETURN_TYPES = ("VIDEO",)
-    RETURN_NAMES = ("video",)
-    FUNCTION = "generate"
-    CATEGORY = "ComfyUI LLM Mini/Video/xAI"
-
-    def generate(self, prompt, model_name, aspect_ratio, resolution, duration, seed, image=None, unique_id=None):
-        node_id = get_unique_id(self, unique_id)
+    @classmethod
+    def execute(cls, prompt, model_name, aspect_ratio, resolution, duration, seed, image=None):
+        node_id = get_unique_id(cls)
         with StatusUpdater(node_id, "Generating (xAI Video)") as updater:
             info = resolve_provider("xai")
             api_key = info.get("api_key", "")
@@ -90,24 +90,30 @@ class XAIVideoReferenceNode(IO.ComfyNode):
             raise RuntimeError(f"LLM Mini xAI video reference request failed: {exc}")
 
 
-class XAIVideoEditNode:
+class XAIVideoEditNode(IO.ComfyNode):
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {"prompt": ("STRING", {"multiline": True, "default": ""}), "model_name": (["grok-imagine-video"], {"default": "grok-imagine-video"}), "video": ("VIDEO",), "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647, "step": 1})},
-            "optional": {},
-            "hidden": {
-                "unique_id": "UNIQUE_ID",
-            },
-        }
+    def define_schema(cls):
+        return IO.Schema(
+            node_id="LLMMiniXAIVideoEdit",
+            display_name="xAI Video Edit",
+            category="ComfyUI LLM Mini/Video/xAI",
+            inputs=[
+                IO.String.Input("prompt", multiline=True, default=""),
+                IO.Combo.Input("model_name", options=["grok-imagine-video"], default="grok-imagine-video"),
+                IO.Video.Input("video"),
+                IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1),
+            ],
+            outputs=[
+                IO.Video.Output("video"),
+            ],
+            hidden=[
+                IO.Hidden.unique_id,
+            ],
+        )
 
-    RETURN_TYPES = ("VIDEO",)
-    RETURN_NAMES = ("video",)
-    FUNCTION = "edit"
-    CATEGORY = "ComfyUI LLM Mini/Video/xAI"
-
-    def edit(self, prompt, model_name, video, seed, unique_id=None):
-        node_id = get_unique_id(self, unique_id)
+    @classmethod
+    def execute(cls, prompt, model_name, video, seed):
+        node_id = get_unique_id(cls)
         with StatusUpdater(node_id, "Editing (xAI Video)") as updater:
             info = resolve_provider("xai")
             api_key = info.get("api_key", "")
@@ -115,24 +121,31 @@ class XAIVideoEditNode:
             return (res[0],)
 
 
-class XAIVideoExtendNode:
+class XAIVideoExtendNode(IO.ComfyNode):
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {"prompt": ("STRING", {"multiline": True, "default": ""}), "model_name": (["grok-imagine-video"], {"default": "grok-imagine-video"}), "video": ("VIDEO",), "duration": ("INT", {"default": 8, "min": 2, "max": 10, "step": 1}), "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647, "step": 1})},
-            "optional": {},
-            "hidden": {
-                "unique_id": "UNIQUE_ID",
-            },
-        }
+    def define_schema(cls):
+        return IO.Schema(
+            node_id="LLMMiniXAIVideoExtend",
+            display_name="xAI Video Extend",
+            category="ComfyUI LLM Mini/Video/xAI",
+            inputs=[
+                IO.String.Input("prompt", multiline=True, default=""),
+                IO.Combo.Input("model_name", options=["grok-imagine-video"], default="grok-imagine-video"),
+                IO.Video.Input("video"),
+                IO.Int.Input("duration", default=8, min=2, max=10, step=1),
+                IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1),
+            ],
+            outputs=[
+                IO.Video.Output("video"),
+            ],
+            hidden=[
+                IO.Hidden.unique_id,
+            ],
+        )
 
-    RETURN_TYPES = ("VIDEO",)
-    RETURN_NAMES = ("video",)
-    FUNCTION = "extend"
-    CATEGORY = "ComfyUI LLM Mini/Video/xAI"
-
-    def extend(self, prompt, model_name, video, duration, seed, unique_id=None):
-        node_id = get_unique_id(self, unique_id)
+    @classmethod
+    def execute(cls, prompt, model_name, video, duration, seed):
+        node_id = get_unique_id(cls)
         with StatusUpdater(node_id, "Extending (xAI Video)") as updater:
             info = resolve_provider("xai")
             api_key = info.get("api_key", "")

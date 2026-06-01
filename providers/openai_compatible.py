@@ -21,8 +21,6 @@ def normalize_chat_kwargs(kwargs: dict) -> dict:
     return normalized
 
 
-def ensure_version_suffix(base_url: str) -> str:
-    return normalize_base_url(base_url)
 
 
 def _codex_messages(messages: list[dict]) -> tuple[str, list[dict]]:
@@ -149,7 +147,7 @@ class ApiChatClient:
         if backend == "gemini" and thinking_level:
             extra_parameters["thinking_level"] = thinking_level
         api_key, base_url, oauth_provider = resolve_oauth_marker(provider_info.get("api_key", ""), self.provider, provider_info.get("base_url", ""), self.model_name)
-        base_url = ensure_version_suffix(base_url)
+        base_url = normalize_base_url(base_url)
         if not api_key and self.provider != "ollama":
             raise RuntimeError("No API key or OAuth token found for selected provider.")
         try:

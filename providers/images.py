@@ -108,7 +108,7 @@ def openai_image(prompt: str, model: str, size: str, quality: str, background: s
     return image_source_to_tensor(source), source
 
 
-def google_imagen_generate(prompt: str, model: str, aspect_ratio: str, resolution: str, mime_type: str, seed: int, api_key: str, base_url: str = "", n: int = 1):
+def google_imagen_generate(prompt: str, model: str, aspect_ratio: str, resolution: str, quality: str, seed: int, api_key: str, base_url: str = "", n: int = 1):
     if not api_key:
         raise RuntimeError("No Google API key found. Please configure it in config.ini or environment variables.")
     
@@ -125,7 +125,7 @@ def google_imagen_generate(prompt: str, model: str, aspect_ratio: str, resolutio
     client_kwargs["http_options"] = http_options
     client = genai.Client(**client_kwargs)
     
-    real_mime = f"image/{mime_type}" if mime_type in ["jpeg", "png"] else "image/jpeg"
+    real_mime = f"image/{quality}" if quality in ["jpeg", "png"] else "image/jpeg"
     tensors = []
 
     if model.startswith("gemini"):
@@ -315,7 +315,6 @@ def google_gemini_image_generate(
 
     tensors = []
     texts = []
-    thought_tensors = []
 
     if response.candidates:
         candidate = response.candidates[0]
@@ -336,23 +335,21 @@ def google_gemini_image_generate(
     for part in parts:
         if part.text:
             texts.append(part.text)
-            
-        is_thought = getattr(part, "thought", False)
-        
+
+        # 跳过思维链中间产出的图像（thought=True），仅收集最终输出图像
+        if getattr(part, "thought", False):
+            continue
+
         img_data = None
         try:
             img_data = part.as_image()
         except Exception:
             pass
-            
+
         if img_data is not None:
             pil_img = Image.open(io.BytesIO(img_data.image_bytes)).convert("RGB")
             arr = np.array(pil_img).astype(np.float32) / 255.0
-            tensor_img = torch.from_numpy(arr).unsqueeze(0)
-            if is_thought:
-                thought_tensors.append(tensor_img)
-            else:
-                tensors.append(tensor_img)
+            tensors.append(torch.from_numpy(arr).unsqueeze(0))
 
     text_res = "\n".join(texts) if texts else ""
 
@@ -361,10 +358,5 @@ def google_gemini_image_generate(
     else:
         final_image = torch.zeros((1, 1024, 1024, 3), dtype=torch.float32)
 
-    if thought_tensors:
-        thought_image = torch.cat(thought_tensors, dim=0)
-    else:
-        thought_image = torch.zeros((1, 1024, 1024, 3), dtype=torch.float32)
-
-    return final_image, text_res, thought_image
+    return final_image, text_res
 
