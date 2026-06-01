@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from comfy_api.latest import IO
 
-from ..core.config import CREDENTIAL_SOURCE_API_KEY, credential_input, credential_sources_for_provider
+from ..core.config import resolve_provider
 from ..providers.xai import xai_video, xai_video_edit, xai_video_extend, xai_video_reference
 from ..core.status import StatusUpdater, get_unique_id
 
@@ -13,7 +13,7 @@ class XAIVideoNode:
         return {
             "required": {
                 "prompt": ("STRING", {"multiline": True, "default": ""}),
-                "model_name": (["grok-imagine-video"], {"default": "grok-imagine-video"}),
+                "model_name": (["grok-imagine-video", "grok-imagine-video-1.5-preview"], {"default": "grok-imagine-video"}),
                 "aspect_ratio": (["auto", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16"], {"default": "auto"}),
                 "resolution": (["720p", "480p"], {"default": "720p"}),
                 "duration": ("INT", {"default": 6, "min": 1, "max": 15, "step": 1}),
@@ -21,7 +21,6 @@ class XAIVideoNode:
             },
             "optional": {
                 "image": ("IMAGE",),
-                "credential_source": (credential_sources_for_provider("xai"), {"default": CREDENTIAL_SOURCE_API_KEY}),
             },
             "hidden": {
                 "unique_id": "UNIQUE_ID",
@@ -33,10 +32,11 @@ class XAIVideoNode:
     FUNCTION = "generate"
     CATEGORY = "ComfyUI LLM Mini/Video/xAI"
 
-    def generate(self, prompt, model_name, aspect_ratio, resolution, duration, seed, image=None, credential_source=CREDENTIAL_SOURCE_API_KEY, unique_id=None):
+    def generate(self, prompt, model_name, aspect_ratio, resolution, duration, seed, image=None, unique_id=None):
         node_id = get_unique_id(self, unique_id)
         with StatusUpdater(node_id, "Generating (xAI Video)") as updater:
-            api_key = credential_input("xai", credential_source)
+            info = resolve_provider("xai")
+            api_key = info.get("api_key", "")
             res = xai_video(prompt, model_name, aspect_ratio, resolution, duration, seed, api_key, "", image, status_updater=updater)
             return (res[0],)
 
@@ -50,7 +50,7 @@ class XAIVideoReferenceNode(IO.ComfyNode):
             category="ComfyUI LLM Mini/Video/xAI",
             inputs=[
                 IO.String.Input("prompt", multiline=True, default=""),
-                IO.Combo.Input("model_name", options=["grok-imagine-video"], default="grok-imagine-video"),
+                IO.Combo.Input("model_name", options=["grok-imagine-video", "grok-imagine-video-1.5-preview"], default="grok-imagine-video"),
                 IO.Combo.Input("aspect_ratio", options=["auto", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16"], default="auto"),
                 IO.Combo.Input("resolution", options=["720p", "480p"], default="720p"),
                 IO.Int.Input("duration", default=6, min=1, max=10, step=1),
@@ -64,7 +64,6 @@ class XAIVideoReferenceNode(IO.ComfyNode):
                     ),
                     tooltip="Reference images (up to 7). Add image inputs dynamically as needed. Use @Image1, @Image2, etc. in your prompt to refer to them.",
                 ),
-                IO.Combo.Input("credential_source", options=credential_sources_for_provider("xai"), default=CREDENTIAL_SOURCE_API_KEY),
             ],
             outputs=[
                 IO.Video.Output("video"),
@@ -75,11 +74,12 @@ class XAIVideoReferenceNode(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, prompt, model_name, aspect_ratio, resolution, duration, seed, images=None, credential_source=CREDENTIAL_SOURCE_API_KEY):
+    def execute(cls, prompt, model_name, aspect_ratio, resolution, duration, seed, images=None):
         node_id = get_unique_id(cls)
         try:
             with StatusUpdater(node_id, "Generating (xAI Multi-Reference Video)") as updater:
-                api_key = credential_input("xai", credential_source)
+                info = resolve_provider("xai")
+                api_key = info.get("api_key", "")
                 refs = list(images) if isinstance(images, (list, tuple)) else ([images] if images is not None else [])
                 if isinstance(images, dict):
                     refs = [t for t in images.values() if t is not None]
@@ -95,7 +95,7 @@ class XAIVideoEditNode:
     def INPUT_TYPES(cls):
         return {
             "required": {"prompt": ("STRING", {"multiline": True, "default": ""}), "model_name": (["grok-imagine-video"], {"default": "grok-imagine-video"}), "video": ("VIDEO",), "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647, "step": 1})},
-            "optional": {"credential_source": (credential_sources_for_provider("xai"), {"default": CREDENTIAL_SOURCE_API_KEY})},
+            "optional": {},
             "hidden": {
                 "unique_id": "UNIQUE_ID",
             },
@@ -106,10 +106,11 @@ class XAIVideoEditNode:
     FUNCTION = "edit"
     CATEGORY = "ComfyUI LLM Mini/Video/xAI"
 
-    def edit(self, prompt, model_name, video, seed, credential_source=CREDENTIAL_SOURCE_API_KEY, unique_id=None):
+    def edit(self, prompt, model_name, video, seed, unique_id=None):
         node_id = get_unique_id(self, unique_id)
         with StatusUpdater(node_id, "Editing (xAI Video)") as updater:
-            api_key = credential_input("xai", credential_source)
+            info = resolve_provider("xai")
+            api_key = info.get("api_key", "")
             res = xai_video_edit(prompt, model_name, video, seed, api_key, "", status_updater=updater)
             return (res[0],)
 
@@ -119,7 +120,7 @@ class XAIVideoExtendNode:
     def INPUT_TYPES(cls):
         return {
             "required": {"prompt": ("STRING", {"multiline": True, "default": ""}), "model_name": (["grok-imagine-video"], {"default": "grok-imagine-video"}), "video": ("VIDEO",), "duration": ("INT", {"default": 8, "min": 2, "max": 10, "step": 1}), "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647, "step": 1})},
-            "optional": {"credential_source": (credential_sources_for_provider("xai"), {"default": CREDENTIAL_SOURCE_API_KEY})},
+            "optional": {},
             "hidden": {
                 "unique_id": "UNIQUE_ID",
             },
@@ -130,9 +131,10 @@ class XAIVideoExtendNode:
     FUNCTION = "extend"
     CATEGORY = "ComfyUI LLM Mini/Video/xAI"
 
-    def extend(self, prompt, model_name, video, duration, seed, credential_source=CREDENTIAL_SOURCE_API_KEY, unique_id=None):
+    def extend(self, prompt, model_name, video, duration, seed, unique_id=None):
         node_id = get_unique_id(self, unique_id)
         with StatusUpdater(node_id, "Extending (xAI Video)") as updater:
-            api_key = credential_input("xai", credential_source)
+            info = resolve_provider("xai")
+            api_key = info.get("api_key", "")
             res = xai_video_extend(prompt, model_name, video, duration, seed, api_key, "", status_updater=updater)
             return (res[0],)

@@ -1,6 +1,7 @@
 from .chat import ApiChatNode, PersonaNode, PersonaManagerNode
 from .image import OpenAICodexImageNode, XAIImagineNode, GoogleImagenNode, GoogleGeminiNanoBananaNode, GoogleGeminiNanoBananaProNode, GoogleGeminiNanoBanana2Node
 from .video import XAIVideoEditNode, XAIVideoExtendNode, XAIVideoNode, XAIVideoReferenceNode
+from .manager import LLMMiniProviderManager
 
 NODE_CLASS_MAPPINGS = {
     "LLMMiniApiChat": ApiChatNode,
@@ -16,6 +17,7 @@ NODE_CLASS_MAPPINGS = {
     "LLMMiniXAIVideoReference": XAIVideoReferenceNode,
     "LLMMiniXAIVideoEdit": XAIVideoEditNode,
     "LLMMiniXAIVideoExtend": XAIVideoExtendNode,
+    "LLMMiniProviderManager": LLMMiniProviderManager,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -32,4 +34,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LLMMiniXAIVideoReference": "xAI Multi-Reference Video",
     "LLMMiniXAIVideoEdit": "xAI Video Edit",
     "LLMMiniXAIVideoExtend": "xAI Video Extend",
+    "LLMMiniProviderManager": "Provider Manager",
 }

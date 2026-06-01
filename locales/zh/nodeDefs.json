@@ -9,7 +9,6 @@
       "temperature": { "name": "温度" },
       "max_tokens": { "name": "最大 Token" },
       "is_locked": { "name": "锁定缓存", "tooltip": "开启时相同输入不会重复执行；关闭时每次都会重新请求。" },
-      "credential_source": { "name": "凭据来源" },
       "system_prompt_input": { "name": "加载人格面具" },
       "thinking_level": { "name": "思考级别" },
       "images": { "name": "参考图像", "tooltip": "可选参考图（支持多张图或图像批次）。连接后会自动增加新的图像输入。" },
@@ -57,8 +56,7 @@
       "aspect_ratio": { "name": "宽高比" },
       "resolution": { "name": "分辨率" },
       "seed": { "name": "随机种" },
-      "images": { "name": "参考图像", "tooltip": "可选参考图。连接后会自动增加新的图像输入。" },
-      "credential_source": { "name": "凭据来源" }
+      "images": { "name": "参考图像", "tooltip": "可选参考图。连接后会自动增加新的图像输入。" }
     },
     "outputs": {
       "image": { "name": "图像" }
@@ -73,8 +71,7 @@
       "resolution": { "name": "分辨率" },
       "duration": { "name": "时长" },
       "seed": { "name": "随机种" },
-      "image": { "name": "图像" },
-      "credential_source": { "name": "凭据来源" }
+      "image": { "name": "图像" }
     },
     "outputs": {
       "video": { "name": "视频" }
@@ -89,8 +86,7 @@
       "resolution": { "name": "分辨率" },
       "duration": { "name": "时长" },
       "seed": { "name": "随机种" },
-      "images": { "name": "参考图像", "tooltip": "参考图（最多7张）。连接后会自动增加新的图像输入。在提示词中可以使用 @Image1, @Image2 等来指代它们。" },
-      "credential_source": { "name": "凭据来源" }
+      "images": { "name": "参考图像", "tooltip": "参考图（最多7张）。连接后会自动增加新的图像输入。在提示词中可以使用 @Image1, @Image2 等来指代它们。" }
     },
     "outputs": {
       "video": { "name": "视频" }
@@ -102,8 +98,7 @@
       "prompt": { "name": "提示词" },
       "model_name": { "name": "模型" },
       "video": { "name": "视频" },
-      "seed": { "name": "随机种" },
-      "credential_source": { "name": "凭据来源" }
+      "seed": { "name": "随机种" }
     },
     "outputs": {
       "video": { "name": "视频" }
@@ -116,8 +111,7 @@
       "model_name": { "name": "模型" },
       "video": { "name": "视频" },
       "duration": { "name": "时长" },
-      "seed": { "name": "随机种" },
-      "credential_source": { "name": "凭据来源" }
+      "seed": { "name": "随机种" }
     },
     "outputs": {
       "video": { "name": "视频" }
@@ -143,8 +137,7 @@
       "resolution": { "name": "分辨率" },
       "quality": { "name": "图像质量" },
       "n": { "name": "数量", "tooltip": "仅对 Imagen 专属模型生效。" },
-      "seed": { "name": "随机种" },
-      "credential_source": { "name": "凭据来源" }
+      "seed": { "name": "随机种" }
     },
     "outputs": {
       "image": { "name": "图像" }
@@ -160,8 +153,7 @@
       "aspect_ratio": { "name": "宽高比" },
       "response_modalities": { "name": "响应模态" },
       "system_prompt": { "name": "系统提示词" },
-      "seed": { "name": "随机种" },
-      "credential_source": { "name": "凭据来源" }
+      "seed": { "name": "随机种" }
     },
     "outputs": {
       "image": { "name": "图像" },
@@ -179,8 +171,7 @@
       "resolution": { "name": "分辨率" },
       "response_modalities": { "name": "响应模态" },
       "system_prompt": { "name": "系统提示词" },
-      "seed": { "name": "随机种" },
-      "credential_source": { "name": "凭据来源" }
+      "seed": { "name": "随机种" }
     },
     "outputs": {
       "image": { "name": "图像" },
@@ -199,12 +190,18 @@
       "response_modalities": { "name": "响应模态" },
       "thinking_level": { "name": "思考级别" },
       "system_prompt": { "name": "系统提示词" },
-      "seed": { "name": "随机种" },
-      "credential_source": { "name": "凭据来源" }
+      "seed": { "name": "随机种" }
     },
     "outputs": {
       "image": { "name": "图像" },
       "text": { "name": "文本" }
+    }
+  },
+  "LLMMiniProviderManager": {
+    "display_name": "提供商管理器",
+    "inputs": {
+      "provider": { "name": "提供商" },
+      "new_provider_id": { "name": "新提供商 ID", "tooltip": "可选。输入新 ID 以添加自定义 OpenAI 兼容提供商。" }
     }
   }
 }

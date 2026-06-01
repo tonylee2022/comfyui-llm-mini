@@ -116,7 +116,7 @@ def send_anthropic_chat(api_key: str, model: str, messages: list[dict], temperat
     return "\n".join(block.text for block in response.content if getattr(block, "type", "") == "text").strip()
 
 
-def list_gemini_models(api_key: str, credential_source: str, defaults: list[str], base_url: str = "") -> list[str]:
+def list_gemini_models(api_key: str, defaults: list[str], base_url: str = "") -> list[str]:
     if not api_key:
         return defaults
 

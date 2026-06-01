@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from comfy_api.latest import IO
 
-from ..core.config import CREDENTIAL_SOURCE_API_KEY, credential_input, credential_sources_for_provider, resolve_provider
+from ..core.config import resolve_provider
 from ..providers.images import codex_image, openai_image, google_imagen_generate, google_gemini_image_generate
 from ..providers.xai import xai_image
 from ..core.status import StatusUpdater, get_unique_id
@@ -105,7 +105,6 @@ class XAIImagineNode(IO.ComfyNode):
                     ),
                     tooltip="Optional reference images. Add image inputs dynamically as needed.",
                 ),
-                IO.Combo.Input("credential_source", options=credential_sources_for_provider("xai"), default=CREDENTIAL_SOURCE_API_KEY),
             ],
             outputs=[
                 IO.Image.Output("image"),
@@ -116,9 +115,10 @@ class XAIImagineNode(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, prompt, model_name, aspect_ratio, resolution, seed, images=None, credential_source=CREDENTIAL_SOURCE_API_KEY):
+    def execute(cls, prompt, model_name, aspect_ratio, resolution, seed, images=None):
         node_id = get_unique_id(cls)
-        api_key = credential_input("xai", credential_source)
+        info = resolve_provider("xai")
+        api_key = info.get("api_key", "")
         image_tensors = list(images) if isinstance(images, (list, tuple)) else ([images] if images is not None else [])
         if isinstance(images, dict):
             image_tensors = [t for t in images.values() if t is not None]
@@ -150,7 +150,6 @@ class GoogleImagenNode(IO.ComfyNode):
                 IO.Combo.Input("quality", options=["jpeg", "png"], default="jpeg"),
                 IO.Int.Input("n", default=1, min=1, max=4, step=1, tooltip="Only valid for Imagen models."),
                 IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1, control_after_generate=True),
-                IO.Combo.Input("credential_source", options=credential_sources_for_provider("google"), default=CREDENTIAL_SOURCE_API_KEY),
             ],
             outputs=[
                 IO.Image.Output("image"),
@@ -161,12 +160,11 @@ class GoogleImagenNode(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, prompt, model_name, aspect_ratio, resolution, quality, n, seed, credential_source=CREDENTIAL_SOURCE_API_KEY):
+    def execute(cls, prompt, model_name, aspect_ratio, resolution, quality, n, seed):
         node_id = get_unique_id(cls)
         try:
             with StatusUpdater(node_id, "Generating (Google Imagen)"):
-                ident = credential_input("google", credential_source)
-                info = resolve_provider("google", ident)
+                info = resolve_provider("google")
                 api_key = info.get("api_key", "")
                 base_url = info.get("base_url", "")
                 res = google_imagen_generate(prompt, model_name, aspect_ratio, resolution, quality, seed, api_key, base_url=base_url, n=n)
@@ -214,7 +212,6 @@ class GoogleGeminiNanoBananaNode(IO.ComfyNode):
                 IO.Combo.Input("response_modalities", options=["IMAGE", "IMAGE+TEXT"], default="IMAGE"),
                 IO.String.Input("system_prompt", multiline=True, default=GEMINI_IMAGE_SYS_PROMPT, optional=True),
                 IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1, control_after_generate=True),
-                IO.Combo.Input("credential_source", options=credential_sources_for_provider("google"), default=CREDENTIAL_SOURCE_API_KEY),
             ],
             outputs=[
                 IO.Image.Output("image"),
@@ -226,12 +223,11 @@ class GoogleGeminiNanoBananaNode(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, prompt, model, aspect_ratio, response_modalities, system_prompt, seed, images=None, files=None, credential_source=CREDENTIAL_SOURCE_API_KEY):
+    def execute(cls, prompt, model, aspect_ratio, response_modalities, system_prompt, seed, images=None, files=None):
         node_id = get_unique_id(cls)
         try:
             with StatusUpdater(node_id, "Generating (Google Gemini)") as updater:
-                ident = credential_input("google", credential_source)
-                info = resolve_provider("google", ident)
+                info = resolve_provider("google")
                 api_key = info.get("api_key", "")
                 base_url = info.get("base_url", "")
                 
@@ -289,7 +285,6 @@ class GoogleGeminiNanoBananaProNode(IO.ComfyNode):
                 IO.Combo.Input("response_modalities", options=["IMAGE+TEXT", "IMAGE"], default="IMAGE+TEXT"),
                 IO.String.Input("system_prompt", multiline=True, default=GEMINI_IMAGE_SYS_PROMPT, optional=True),
                 IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1, control_after_generate=True),
-                IO.Combo.Input("credential_source", options=credential_sources_for_provider("google"), default=CREDENTIAL_SOURCE_API_KEY),
             ],
             outputs=[
                 IO.Image.Output("image"),
@@ -301,12 +296,11 @@ class GoogleGeminiNanoBananaProNode(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, prompt, model, aspect_ratio, resolution, response_modalities, system_prompt, seed, images=None, files=None, credential_source=CREDENTIAL_SOURCE_API_KEY):
+    def execute(cls, prompt, model, aspect_ratio, resolution, response_modalities, system_prompt, seed, images=None, files=None):
         node_id = get_unique_id(cls)
         try:
             with StatusUpdater(node_id, "Generating (Google Gemini Pro)") as updater:
-                ident = credential_input("google", credential_source)
-                info = resolve_provider("google", ident)
+                info = resolve_provider("google")
                 api_key = info.get("api_key", "")
                 base_url = info.get("base_url", "")
 
@@ -367,7 +361,6 @@ class GoogleGeminiNanoBanana2Node(IO.ComfyNode):
                 IO.Combo.Input("thinking_level", options=["MINIMAL", "HIGH"], default="MINIMAL"),
                 IO.String.Input("system_prompt", multiline=True, default=GEMINI_IMAGE_SYS_PROMPT, optional=True),
                 IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1, control_after_generate=True),
-                IO.Combo.Input("credential_source", options=credential_sources_for_provider("google"), default=CREDENTIAL_SOURCE_API_KEY),
             ],
             outputs=[
                 IO.Image.Output("image"),
@@ -379,12 +372,11 @@ class GoogleGeminiNanoBanana2Node(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, prompt, model, aspect_ratio, resolution, response_modalities, thinking_level, system_prompt, seed, images=None, files=None, credential_source=CREDENTIAL_SOURCE_API_KEY):
+    def execute(cls, prompt, model, aspect_ratio, resolution, response_modalities, thinking_level, system_prompt, seed, images=None, files=None):
         node_id = get_unique_id(cls)
         try:
             with StatusUpdater(node_id, "Generating (Google Nano Banana 2)") as updater:
-                ident = credential_input("google", credential_source)
-                info = resolve_provider("google", ident)
+                info = resolve_provider("google")
                 api_key = info.get("api_key", "")
                 base_url = info.get("base_url", "")
 

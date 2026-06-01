@@ -67,14 +67,121 @@ def video_to_data_uri(video_path: str) -> str:
         return "data:video/mp4;base64," + base64.b64encode(f.read()).decode("utf-8")
 
 
+def transcode_to_h264_mp4(input_path: str) -> str:
+    import subprocess
+    import tempfile
+    import time
+    from pathlib import Path
+
+    # 只要是 mp4 格式，直接返回，免去任何转码逻辑
+    if input_path.lower().endswith(".mp4"):
+        return input_path
+
+    # 默认检测
+    has_audio = False
+    is_h264_mp4 = False
+    try:
+        import av
+        with av.open(input_path) as container:
+            if len(container.streams.audio) > 0:
+                has_audio = True
+            if len(container.streams.video) > 0:
+                v_stream = container.streams.video[0]
+                codec = v_stream.codec.name
+                fmt = container.format.name
+                # 判断是否已经是标准 H.264 MP4 格式
+                if codec in {"h264", "libx264"} and any(x in fmt.lower() for x in {"mp4", "mov", "m4v"}):
+                    is_h264_mp4 = True
+    except Exception:
+        # 备用 ffprobe 检测
+        try:
+            cmd_probe = ["ffprobe", "-show_streams", "-loglevel", "error", input_path]
+            res_probe = subprocess.run(cmd_probe, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            output = res_probe.stdout
+            if "codec_name=h264" in output:
+                # 简单通过文件名后缀判断容器
+                if input_path.lower().endswith((".mp4", ".mov", ".m4v")):
+                    is_h264_mp4 = True
+            if "codec_type=audio" in output:
+                has_audio = True
+        except Exception:
+            pass
+
+    # 如果本身就是 H.264 编码的 MP4，则无需重编码，直接返回原始路径
+    if is_h264_mp4:
+        return input_path
+
+    try:
+        import folder_paths
+        out_dir = Path(folder_paths.get_temp_directory())
+    except Exception:
+        out_dir = Path(tempfile.gettempdir())
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    output_path = out_dir / f"llm-mini-video-transcoded-{int(time.time())}.mp4"
+
+    # ffmpeg 重新转码为标准 H.264 MP4 格式，去除 "-r 25" 以保持原视频帧率，避免 PTS 错误导致 API 报错
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", input_path,
+        "-vcodec", "libx264",
+        "-pix_fmt", "yuv420p",
+    ]
+    if has_audio:
+        cmd += ["-acodec", "aac"]
+    else:
+        cmd += ["-an"]
+
+    cmd += [str(output_path)]
+
+    try:
+        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        return str(output_path)
+    except Exception as e:
+        print(f"[LLM Mini] ffmpeg transcoding failed, falling back to original: {e}")
+        return input_path
+
+
 def get_video_path_from_input(video_input) -> str | None:
     if isinstance(video_input, str):
-        return video_input
-    if hasattr(video_input, "get_stream_source"):
+        return transcode_to_h264_mp4(video_input) if os.path.exists(video_input) else video_input
+
+    raw_path = None
+
+    # 优先尝试使用 save_to 方法
+    if hasattr(video_input, "save_to"):
+        try:
+            import folder_paths
+            from io import BytesIO
+
+            out_dir = Path(folder_paths.get_temp_directory())
+            out_dir.mkdir(parents=True, exist_ok=True)
+            path = out_dir / f"llm-mini-video-input-{int(time.time())}.mp4"
+
+            try:
+                from comfy_api.latest import Types
+                fmt = Types.VideoContainer.MP4
+                cod = Types.VideoCodec.H264
+            except Exception:
+                fmt = "mp4"
+                cod = "h264"
+
+            video_bytes_io = BytesIO()
+            video_input.save_to(video_bytes_io, format=fmt, codec=cod)
+            video_bytes_io.seek(0)
+
+            with open(path, "wb") as f:
+                f.write(video_bytes_io.read())
+            raw_path = str(path)
+        except Exception as e:
+            print(f"[LLM Mini] Failed to save video via save_to: {e}")
+
+    # 尝试 get_stream_source 方法
+    if not raw_path and hasattr(video_input, "get_stream_source"):
         source = video_input.get_stream_source()
         if isinstance(source, str):
-            return source
-        if hasattr(source, "read"):
+            raw_path = source
+        elif hasattr(source, "read"):
             try:
                 source.seek(0)
                 import folder_paths
@@ -83,10 +190,12 @@ def get_video_path_from_input(video_input) -> str | None:
                 out_dir.mkdir(parents=True, exist_ok=True)
                 path = out_dir / f"llm-mini-video-input-{int(time.time())}.mp4"
                 path.write_bytes(source.read())
-                return str(path)
+                raw_path = str(path)
             except Exception:
-                return None
-    if isinstance(video_input, dict) and video_input.get("video"):
+                pass
+
+    # 尝试字典配置格式 (如从 Load Video 节点传入)
+    if not raw_path and isinstance(video_input, dict) and video_input.get("video"):
         item = video_input["video"][0]
         filename = item.get("filename")
         subfolder = item.get("subfolder", "")
@@ -99,10 +208,14 @@ def get_video_path_from_input(video_input) -> str | None:
                 "output": folder_paths.get_output_directory(),
                 "input": folder_paths.get_input_directory(),
             }.get(folder_type, folder_paths.get_temp_directory())
-            return os.path.join(base, subfolder, filename)
+            raw_path = os.path.join(base, subfolder, filename)
         except Exception:
-            return None
-    return None
+            pass
+
+    if raw_path and os.path.exists(raw_path):
+        return transcode_to_h264_mp4(raw_path)
+
+    return raw_path
 
 
 def download_video_to_comfy(url: str):

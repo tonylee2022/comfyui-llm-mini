@@ -80,13 +80,13 @@ def call_codex_responses(api_key: str, model: str, messages: list[dict]) -> str:
     return "".join(chunks).strip()
 
 
-def list_models(provider: str, api_key: str = "", base_url: str = "", credential_source: str = "") -> list[str]:
+def list_models(provider: str, api_key: str = "", base_url: str = "") -> list[str]:
     info = resolve_provider(provider, api_key, base_url)
     backend = info.get("backend", "openai_compatible")
     if backend == "anthropic":
         return list_anthropic_models(info.get("api_key", ""), info.get("default_models", []))
     if backend == "gemini":
-        return list_gemini_models(info.get("api_key", ""), credential_source, info.get("default_models", []), base_url=info.get("base_url", ""))
+        return list_gemini_models(info.get("api_key", ""), info.get("default_models", []), base_url=info.get("base_url", ""))
     api_key, base_url, oauth_provider = resolve_oauth_marker(info.get("api_key", ""), provider, info.get("base_url", ""), "")
     if provider == "codex" or oauth_provider == "codex" or "chatgpt.com" in (base_url or ""):
         return info.get("default_models", [])
@@ -121,7 +121,6 @@ class ApiChatClient:
     model_name: str
     api_key: str
     base_url: str
-    credential_source: str = ""
 
     def send(self, user_prompt: str, system_prompt: str, temperature: float, max_tokens: int, history_json: str = "", image=None, image_url: str = "", stream: bool = False, extra_parameters: dict | None = None, thinking_level: str = "auto") -> tuple[str, str, str]:
         extra_parameters = (extra_parameters or {}).copy()

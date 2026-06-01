@@ -12,9 +12,7 @@ PROVIDERS_PATH = PACKAGE_DIR / "config" / "providers.json"
 PERSONA_DIR = PACKAGE_DIR / "persona"
 TEMP_DIR = PACKAGE_DIR / "temp"
 
-CREDENTIAL_SOURCE_API_KEY = "api key"
-CREDENTIAL_SOURCE_OAUTH = "oauth"
-CREDENTIAL_SOURCES = [CREDENTIAL_SOURCE_API_KEY, CREDENTIAL_SOURCE_OAUTH]
+# (credential source constants removed)
 
 DEFAULT_OPENAI_COMPATIBLE = {
     "display_name": "",
@@ -113,21 +111,7 @@ def provider_names() -> list[str]:
     return names or ["openai"]
 
 
-def credential_sources_for_provider(provider: str) -> list[str]:
-    backend = resolve_provider(provider).get("backend", "openai_compatible")
-    if provider == "codex" or backend == "codex":
-        sources = [CREDENTIAL_SOURCE_OAUTH]
-    elif backend == "xai" or provider == "xai":
-        sources = [CREDENTIAL_SOURCE_API_KEY, CREDENTIAL_SOURCE_OAUTH]
-    elif provider == "google" or backend == "gemini":
-        sources = [CREDENTIAL_SOURCE_API_KEY]
-    else:
-        sources = [CREDENTIAL_SOURCE_API_KEY]
-    configured = load_ini().get(f"provider.{provider}", "credential_source", fallback="").strip().lower()
-    if configured in sources:
-        sources.remove(configured)
-        sources.insert(0, configured)
-    return sources
+# (credential_sources_for_provider removed)
 
 
 def normalize_base_url(base_url: str) -> str:
@@ -144,17 +128,7 @@ def is_placeholder_secret(value: str) -> bool:
     return value.lower() in {"sk-xxxxx", "sk-xxxx", "placeholder", "your-api-key"}
 
 
-def credential_input(provider: str, credential_source: str = "") -> str:
-    source = (credential_source or CREDENTIAL_SOURCE_API_KEY).strip().lower()
-    if source not in credential_sources_for_provider(provider):
-        source = CREDENTIAL_SOURCE_API_KEY
-    if source == CREDENTIAL_SOURCE_OAUTH:
-        if provider == "xai":
-            return "xai_oauth"
-        if provider == "codex":
-            return "codex_oauth"
-        return "oauth"
-    return ""
+# (credential_input removed)
 
 
 def resolve_provider(provider: str, node_api_key: str = "", node_base_url: str = "") -> dict[str, Any]:
@@ -190,6 +164,11 @@ def resolve_provider(provider: str, node_api_key: str = "", node_base_url: str =
     else:
         api_key = env_key.strip()
         config_base = section_base
+
+    # 若未找到任何 API Key，且该提供商支持 OAuth，我们自动采用 OAuth
+    if not api_key and provider in {"xai", "codex"}:
+        api_key = f"{provider}_oauth"
+
     base_url = normalize_base_url((node_base_url or "").strip() or config_base or info.get("base_url", ""))
 
     info.update({"id": provider, "api_key": api_key, "base_url": base_url})
@@ -200,3 +179,48 @@ def persona_files() -> list[str]:
     PERSONA_DIR.mkdir(exist_ok=True)
     names = sorted(p.stem for p in PERSONA_DIR.glob("*.txt"))
     return names or [""]
+
+
+def save_provider_config(provider_id: str, api_key: str, base_url: str) -> None:
+    config = load_ini()
+    section = f"provider.{provider_id}"
+    if not config.has_section(section):
+        config.add_section(section)
+    
+    api_key_clean = (api_key or "").strip()
+    if api_key_clean and not api_key_clean.startswith("[") and not api_key_clean.endswith("]"):
+        config[section]["api_key"] = api_key_clean
+        
+    if base_url is not None:
+        config[section]["base_url"] = base_url.strip()
+    save_ini(config)
+
+
+def delete_provider_config(provider_id: str) -> None:
+    config = load_ini()
+    catalog = load_provider_catalog()
+    section = f"provider.{provider_id}"
+    changed = False
+    
+    # 判定是否属于内置的主流提供商
+    is_built_in = provider_id in catalog
+    
+    if config.has_section(section):
+        if is_built_in:
+            # 默认内置的主流提供商不彻底删除配置段，仅清除 api_key 选项，以便保留其在界面的下拉菜单里
+            if config.has_option(section, "api_key"):
+                config.remove_option(section, "api_key")
+                changed = True
+        else:
+            # 用户自定义添加的提供商，则彻底删除该配置段
+            config.remove_section(section)
+            changed = True
+    
+    # 同步擦除该提供商的 OAuth 授权凭据缓存段，防止数据残留
+    oauth_section = f"{provider_id}_oauth"
+    if config.has_section(oauth_section):
+        config.remove_section(oauth_section)
+        changed = True
+        
+    if changed:
+        save_ini(config)
