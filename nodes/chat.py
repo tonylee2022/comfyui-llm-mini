@@ -23,6 +23,7 @@ class ApiChatNode(IO.ComfyNode):
             category="ComfyUI LLM Mini/Chat",
             inputs=[
                 IO.String.Input("system_prompt_input", optional=True, force_input=True),
+                IO.String.Input("history_json", optional=True, force_input=True),
                 IO.Autogrow.Input(
                     "images",
                     template=IO.Autogrow.TemplateNames(
@@ -63,8 +64,8 @@ class ApiChatNode(IO.ComfyNode):
         return _chat_fingerprint(is_locked)
 
     @classmethod
-    def execute(cls, system_prompt_input="", images=None, provider=None, model_name=None, system_prompt="", user_prompt="", temperature=0.7, max_tokens=2048, is_locked=True, thinking_level="auto", image_url="", stream=False):
-        node_id = get_unique_id(cls)
+    def execute(cls, system_prompt_input="", history_json="", images=None, provider=None, model_name=None, system_prompt="", user_prompt="", temperature=0.7, max_tokens=2048, is_locked=True, thinking_level="auto", image_url="", stream=False, unique_id=None):
+        node_id = get_unique_id(cls, unique_id)
         try:
             with StatusUpdater(node_id, f"Chatting ({provider})"):
                 info = resolve_provider(provider)
@@ -94,7 +95,7 @@ class ApiChatNode(IO.ComfyNode):
                     system_prompt=final_system,
                     temperature=temperature,
                     max_tokens=max_tokens,
-                    history_json="",
+                    history_json=history_json,
                     image=valid_images if valid_images else None,
                     image_url=image_url,
                     stream=stream,

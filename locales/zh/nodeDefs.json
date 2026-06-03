@@ -6,6 +6,7 @@
       "model_name": { "name": "模型" },
       "system_prompt": { "name": "系统提示词" },
       "user_prompt": { "name": "用户提示词" },
+      "history_json": { "name": "历史记录 JSON" },
       "temperature": { "name": "温度" },
       "max_tokens": { "name": "最大 Token" },
       "is_locked": { "name": "锁定缓存", "tooltip": "开启时相同输入不会重复执行；关闭时每次都会重新请求。" },

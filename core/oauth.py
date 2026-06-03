@@ -414,6 +414,49 @@ def run_device_code_flow(provider: str, custom_client_id: str = "", custom_clien
 
 # 全局 OAuth 授权状态存储
 OAUTH_STATES: dict[str, dict] = {}
+OAUTH_SERVERS: dict[str, HTTPServer] = {}
+OAUTH_LOCK = threading.RLock()
+
+
+def _update_oauth_state(provider: str, **kwargs) -> None:
+    with OAUTH_LOCK:
+        if provider in OAUTH_STATES:
+            OAUTH_STATES[provider].update(kwargs)
+
+
+def _oauth_status(provider: str) -> str:
+    with OAUTH_LOCK:
+        return OAUTH_STATES.get(provider, {}).get("status", "idle")
+
+
+def get_oauth_state(provider: str) -> dict:
+    with OAUTH_LOCK:
+        return dict(OAUTH_STATES.get(provider, {"status": "idle"}))
+
+
+def _register_oauth_server(provider: str, server: HTTPServer) -> None:
+    with OAUTH_LOCK:
+        OAUTH_SERVERS[provider] = server
+
+
+def _pop_oauth_server(provider: str) -> HTTPServer | None:
+    with OAUTH_LOCK:
+        return OAUTH_SERVERS.pop(provider, None)
+
+
+def cancel_oauth_flow(provider: str, reason: str = "User cancelled the authorization.") -> None:
+    provider = provider.strip().lower()
+    server = None
+    with OAUTH_LOCK:
+        if provider in OAUTH_STATES:
+            OAUTH_STATES[provider]["status"] = "cancelled"
+            OAUTH_STATES[provider]["error"] = reason
+        server = OAUTH_SERVERS.pop(provider, None)
+    if server is not None:
+        try:
+            server.shutdown()
+        except Exception as exc:
+            print(f"[LLM Mini] Failed to shutdown OAuth server for {provider}: {exc}")
 
 
 def start_async_oauth_flow(provider: str, flow_type: str) -> dict:
@@ -422,19 +465,19 @@ def start_async_oauth_flow(provider: str, flow_type: str) -> dict:
         raise ValueError(f"Unsupported OAuth provider: {provider}")
     
     # 如果该提供商当前有正在进行的 pending 授权，先将其状态改为已取消，让原线程优雅终止
-    if provider in OAUTH_STATES and OAUTH_STATES[provider].get("status") == "pending":
-        OAUTH_STATES[provider]["status"] = "cancelled"
-        OAUTH_STATES[provider]["error"] = "Cancelled due to new authorization request."
+    if _oauth_status(provider) == "pending":
+        cancel_oauth_flow(provider, "Cancelled due to new authorization request.")
         time.sleep(0.6)
         
-    OAUTH_STATES[provider] = {
-        "status": "pending",
-        "user_code": "",
-        "verification_uri": "",
-        "expires_in": 300,
-        "start_time": time.time(),
-        "error": ""
-    }
+    with OAUTH_LOCK:
+        OAUTH_STATES[provider] = {
+            "status": "pending",
+            "user_code": "",
+            "verification_uri": "",
+            "expires_in": 300,
+            "start_time": time.time(),
+            "error": ""
+        }
     
     if flow_type == "device":
         return _start_async_device_flow(provider)
@@ -475,18 +518,19 @@ def _start_async_device_flow(provider: str) -> dict:
         if client_secret:
             poll_payload["client_secret"] = client_secret
 
-    OAUTH_STATES[provider].update({
-        "user_code": user_code,
-        "verification_uri": verification_uri,
-        "expires_in": expires_in,
-        "start_time": time.time(),
-    })
+    _update_oauth_state(
+        provider,
+        user_code=user_code,
+        verification_uri=verification_uri,
+        expires_in=expires_in,
+        start_time=time.time(),
+    )
 
     def background_device_poll():
         start = time.time()
         interval = int(data.get("interval", 5))
         while time.time() - start < expires_in:
-            if OAUTH_STATES.get(provider, {}).get("status") != "pending":
+            if _oauth_status(provider) != "pending":
                 break
             time.sleep(interval)
             try:
@@ -509,16 +553,17 @@ def _start_async_device_flow(provider: str) -> dict:
                         write_tokens(provider, client_id, client_secret, exchange.json(), creds["token_url"])
                     else:  # xai
                         write_tokens(provider, client_id, client_secret, token_data, creds["token_url"])
-                    OAUTH_STATES[provider]["status"] = "success"
+                    _update_oauth_state(provider, status="success")
                     break
-            except Exception:
-                pass
+                if poll.status_code not in {400, 401, 403, 404, 429}:
+                    _update_oauth_state(provider, error=f"Device authorization polling failed: HTTP {poll.status_code} {poll.text[:200]}")
+            except Exception as exc:
+                _update_oauth_state(provider, error=f"Device authorization polling failed: {exc}")
         else:
-            OAUTH_STATES[provider]["status"] = "failed"
-            OAUTH_STATES[provider]["error"] = "Device authorization timed out."
+            _update_oauth_state(provider, status="failed", error="Device authorization timed out.")
 
     threading.Thread(target=background_device_poll, daemon=True).start()
-    return OAUTH_STATES[provider]
+    return get_oauth_state(provider)
 
 
 def _start_async_browser_flow(provider: str) -> dict:
@@ -531,6 +576,7 @@ def _start_async_browser_flow(provider: str) -> dict:
     server = HTTPServer(("0.0.0.0", port), CallbackHandler)
     server.auth_code = None
     server.auth_state = None
+    _register_oauth_server(provider, server)
     
     # 关键：立刻在同步线程中启动并运行本地 HTTPServer 服务，确保端口在向前发回 URL 和 window.open 之前已绝对处于监听 serve 状态
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -552,27 +598,27 @@ def _start_async_browser_flow(provider: str) -> dict:
         params["audience"] = "https://api.openai.com/v1"
     url = f"{creds['auth_url']}?{urllib.parse.urlencode(params)}"
     
-    OAUTH_STATES[provider].update({
-        "verification_uri": url,
-        "expires_in": 300,
-        "start_time": time.time(),
-        "code_verifier": verifier,
-        "redirect_uri": redirect_uri,
-        "client_id": client_id,
-        "client_secret": client_secret,
-    })
+    _update_oauth_state(
+        provider,
+        verification_uri=url,
+        expires_in=300,
+        start_time=time.time(),
+        code_verifier=verifier,
+        redirect_uri=redirect_uri,
+        client_id=client_id,
+        client_secret=client_secret,
+    )
 
     def background_browser_server():
         start = time.time()
         while time.time() - start < 300:
-            if OAUTH_STATES.get(provider, {}).get("status") != "pending":
+            if _oauth_status(provider) != "pending":
                 break
             if server.auth_code is not None:
                 # 留出 1.0 秒时间，确保 HTTPServer 将网页接收成功的 HTML 响应完全发回给浏览器后再进行后续操作和 shutdown
                 time.sleep(1.0)
                 if server.auth_state and server.auth_state != state:
-                    OAUTH_STATES[provider]["status"] = "failed"
-                    OAUTH_STATES[provider]["error"] = "OAuth state mismatch."
+                    _update_oauth_state(provider, status="failed", error="OAuth state mismatch.")
                     break
                 try:
                     payload = {
@@ -587,25 +633,24 @@ def _start_async_browser_flow(provider: str) -> dict:
                     response = requests.post(creds["token_url"], data=payload, timeout=20)
                     response.raise_for_status()
                     write_tokens(provider, client_id, client_secret, response.json(), creds["token_url"])
-                    OAUTH_STATES[provider]["status"] = "success"
+                    _update_oauth_state(provider, status="success")
                 except Exception as e:
-                    OAUTH_STATES[provider]["status"] = "failed"
-                    OAUTH_STATES[provider]["error"] = f"Token exchange failed: {e}"
+                    _update_oauth_state(provider, status="failed", error=f"Token exchange failed: {e}")
                 break
             time.sleep(0.5)
         else:
-            OAUTH_STATES[provider]["status"] = "failed"
-            OAUTH_STATES[provider]["error"] = "Browser login timed out."
+            _update_oauth_state(provider, status="failed", error="Browser login timed out.")
             
+        _pop_oauth_server(provider)
         server.shutdown()
 
     threading.Thread(target=background_browser_server, daemon=True).start()
-    return OAUTH_STATES[provider]
+    return get_oauth_state(provider)
 
 
 def exchange_manual_code(provider: str, code: str) -> None:
     provider = provider.strip().lower()
-    state = OAUTH_STATES.get(provider)
+    state = get_oauth_state(provider)
     if not state or state.get("status") != "pending":
         raise RuntimeError("No active authorization flow found for this provider.")
     
@@ -632,4 +677,4 @@ def exchange_manual_code(provider: str, code: str) -> None:
     response.raise_for_status()
     
     write_tokens(provider, client_id, client_secret, response.json(), creds["token_url"])
-    OAUTH_STATES[provider]["status"] = "success"
+    _update_oauth_state(provider, status="success")

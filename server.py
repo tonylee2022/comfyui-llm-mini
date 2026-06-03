@@ -155,8 +155,8 @@ def register_routes() -> None:
             if not provider:
                 return web.json_response({"error": "Provider cannot be empty"}, status=400)
                 
-            from .core.oauth import OAUTH_STATES
-            state = OAUTH_STATES.get(provider, {"status": "idle"})
+            from .core.oauth import get_oauth_state
+            state = get_oauth_state(provider)
             
             elapsed = time.time() - state.get("start_time", time.time())
             expires_in = max(0, int(state.get("expires_in", 300) - elapsed))
@@ -185,10 +185,8 @@ def register_routes() -> None:
             provider = data.get("provider", "").strip()
             if not provider:
                 return web.json_response({"error": "Provider and Code cannot be empty"}, status=400)
-            from .core.oauth import OAUTH_STATES
-            if provider in OAUTH_STATES:
-                OAUTH_STATES[provider]["status"] = "cancelled"
-                OAUTH_STATES[provider]["error"] = "User cancelled the authorization."
+            from .core.oauth import cancel_oauth_flow
+            await asyncio.to_thread(cancel_oauth_flow, provider)
             return web.json_response({"success": True})
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=500)

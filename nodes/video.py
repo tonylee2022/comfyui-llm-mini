@@ -32,8 +32,8 @@ class XAIVideoNode(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, prompt, model_name, aspect_ratio, resolution, duration, seed, image=None):
-        node_id = get_unique_id(cls)
+    def execute(cls, prompt, model_name, aspect_ratio, resolution, duration, seed, image=None, unique_id=None):
+        node_id = get_unique_id(cls, unique_id)
         with StatusUpdater(node_id, "Generating (xAI Video)") as updater:
             info = resolve_provider("xai")
             api_key = info.get("api_key", "")
@@ -74,8 +74,8 @@ class XAIVideoReferenceNode(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, prompt, model_name, aspect_ratio, resolution, duration, seed, images=None):
-        node_id = get_unique_id(cls)
+    def execute(cls, prompt, model_name, aspect_ratio, resolution, duration, seed, images=None, unique_id=None):
+        node_id = get_unique_id(cls, unique_id)
         try:
             with StatusUpdater(node_id, "Generating (xAI Multi-Reference Video)") as updater:
                 info = resolve_provider("xai")
@@ -112,8 +112,8 @@ class XAIVideoEditNode(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, prompt, model_name, video, seed):
-        node_id = get_unique_id(cls)
+    def execute(cls, prompt, model_name, video, seed, unique_id=None):
+        node_id = get_unique_id(cls, unique_id)
         with StatusUpdater(node_id, "Editing (xAI Video)") as updater:
             info = resolve_provider("xai")
             api_key = info.get("api_key", "")
@@ -144,8 +144,8 @@ class XAIVideoExtendNode(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, prompt, model_name, video, duration, seed):
-        node_id = get_unique_id(cls)
+    def execute(cls, prompt, model_name, video, duration, seed, unique_id=None):
+        node_id = get_unique_id(cls, unique_id)
         with StatusUpdater(node_id, "Extending (xAI Video)") as updater:
             info = resolve_provider("xai")
             api_key = info.get("api_key", "")

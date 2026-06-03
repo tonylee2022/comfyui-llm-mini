@@ -66,8 +66,8 @@ class OpenAICodexImageNode(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, prompt, execution_backend, model_name, size, quality, background, n, seed, images=None, mask=None):
-        node_id = get_unique_id(cls)
+    def execute(cls, prompt, execution_backend, model_name, size, quality, background, n, seed, images=None, mask=None, unique_id=None):
+        node_id = get_unique_id(cls, unique_id)
         image_tensors = list(images) if isinstance(images, (list, tuple)) else ([images] if images is not None else [])
         if isinstance(images, dict):
             image_tensors = [t for t in images.values() if t is not None]
@@ -115,8 +115,8 @@ class XAIImagineNode(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, prompt, model_name, aspect_ratio, resolution, seed, images=None):
-        node_id = get_unique_id(cls)
+    def execute(cls, prompt, model_name, aspect_ratio, resolution, seed, images=None, unique_id=None):
+        node_id = get_unique_id(cls, unique_id)
         info = resolve_provider("xai")
         api_key = info.get("api_key", "")
         image_tensors = list(images) if isinstance(images, (list, tuple)) else ([images] if images is not None else [])
@@ -160,8 +160,8 @@ class GoogleImagenNode(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, prompt, model_name, aspect_ratio, resolution, quality, n, seed):
-        node_id = get_unique_id(cls)
+    def execute(cls, prompt, model_name, aspect_ratio, resolution, quality, n, seed, unique_id=None):
+        node_id = get_unique_id(cls, unique_id)
         try:
             with StatusUpdater(node_id, "Generating (Google Imagen)"):
                 info = resolve_provider("google")
@@ -223,8 +223,8 @@ class GoogleGeminiNanoBananaNode(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, prompt, model, aspect_ratio, response_modalities, system_prompt, seed, images=None, files=None):
-        node_id = get_unique_id(cls)
+    def execute(cls, prompt, model, aspect_ratio, response_modalities, system_prompt, seed, images=None, files=None, unique_id=None):
+        node_id = get_unique_id(cls, unique_id)
         try:
             with StatusUpdater(node_id, "Generating (Google Gemini)") as updater:
                 info = resolve_provider("google")
@@ -295,8 +295,8 @@ class GoogleGeminiNanoBananaProNode(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, prompt, model, aspect_ratio, resolution, response_modalities, system_prompt, seed, images=None, files=None):
-        node_id = get_unique_id(cls)
+    def execute(cls, prompt, model, aspect_ratio, resolution, response_modalities, system_prompt, seed, images=None, files=None, unique_id=None):
+        node_id = get_unique_id(cls, unique_id)
         try:
             with StatusUpdater(node_id, "Generating (Google Gemini Pro)") as updater:
                 info = resolve_provider("google")
@@ -367,8 +367,8 @@ class GoogleGeminiNanoBanana2Node(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, prompt, model, aspect_ratio, resolution, response_modalities, thinking_level, system_prompt, seed, images=None, files=None):
-        node_id = get_unique_id(cls)
+    def execute(cls, prompt, model, aspect_ratio, resolution, response_modalities, thinking_level, system_prompt, seed, images=None, files=None, unique_id=None):
+        node_id = get_unique_id(cls, unique_id)
         try:
             with StatusUpdater(node_id, "Generating (Google Nano Banana 2)") as updater:
                 info = resolve_provider("google")
