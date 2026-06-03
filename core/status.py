@@ -64,10 +64,30 @@ class StatusUpdater:
         if self.node_id:
             if exc_type is not None:
                 err_msg = str(exc_val)
-                if "IMAGE_PROHIBITED_CONTENT" in err_msg or "safety" in err_msg.lower():
-                    self._send("Status: Blocked (Safety Policy)")
+                err_msg_lower = err_msg.lower()
+                
+                is_safety_blocked = (
+                    "image_prohibited_content" in err_msg_lower
+                    or "safety" in err_msg_lower
+                    or "moderation" in err_msg_lower
+                    or "policy" in err_msg_lower
+                    or "安全政策" in err_msg
+                    or "安全策略" in err_msg
+                    or "内容安全" in err_msg
+                )
+                
+                first_line = err_msg.split('\n')[0].strip()
+                if is_safety_blocked:
+                    try:
+                        from ..providers.xai import _is_chinese_locale
+                        is_zh = _is_chinese_locale()
+                    except Exception:
+                        is_zh = False
+                    
+                    status_lbl = "Status: 被安全政策拦截" if is_zh else "Status: Blocked (Safety Policy)"
+                    self._send(f"{status_lbl}\nError: {first_line[:120]}")
                 else:
-                    self._send(f"Status: Failed\nError: {err_msg[:40]}")
+                    self._send(f"Status: Failed\nError: {first_line[:120]}")
             else:
                 elapsed = int(time.time() - self.start_time)
                 self._send(f"Status: Completed\nTime elapsed: {elapsed}s")

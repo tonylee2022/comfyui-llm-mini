@@ -35,6 +35,10 @@ export function setupNodeByType(node, nodeName) {
   if (nodeName === "LLMMiniLoadPersona") {
     node.size = [250, node.computeSize()[1]];
   }
+
+  if (["LLMMiniXAIVideo", "LLMMiniXAIVideoReference", "LLMMiniXAIVideoEdit", "LLMMiniXAIVideoExtend"].includes(nodeName)) {
+    node.size = [300, node.computeSize()[1]];
+  }
   
   if (nodeName === "LLMMiniPersonaManager") {
     setTimeout(() => setupPersonaManager(node), 50);

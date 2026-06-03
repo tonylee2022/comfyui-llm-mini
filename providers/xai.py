@@ -14,6 +14,8 @@ from ..core.oauth import get_oauth_token
 ERROR_TRANSLATIONS = {
     "Generated video rejected by content moderation.": "生成的视频因违反内容安全政策被拒绝。",
     "Generated video rejected by content moderation": "生成的视频因违反内容安全政策被拒绝",
+    "Generated image rejected by content moderation.": "生成的图像因违反内容安全政策被拒绝。",
+    "Generated image rejected by content moderation": "生成的图像因违反内容安全政策被拒绝",
     "Video generation failed due to an internal error. Please try again.": "视频生成由于内部服务错误失败，请重试。",
     "Video generation failed due to an internal error. Please try again": "视频生成由于内部服务错误失败，请重试",
     "CONTENT_POLICY_VIOLATION": "违反内容安全政策",
