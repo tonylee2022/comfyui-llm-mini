@@ -1,7 +1,23 @@
 import { api } from "../../../../scripts/api.js";
+import { app } from "../../../../scripts/app.js";
 import { t, findWidget, updateCombo, fetchProviderInfo } from "./utils.js";
+import { showModelSelectionModal } from "./modal.js";
+
+function updateAllRelatedNodes(providerId, models) {
+  if (!app.graph || !app.graph._nodes) return;
+  for (const node of app.graph._nodes) {
+    if (node && node.widgets) {
+      const providerWidget = node.widgets.find(w => w.name === "provider");
+      const modelWidget = node.widgets.find(w => w.name === "model_name");
+      if (providerWidget && modelWidget && providerWidget.value === providerId) {
+        updateCombo(node, "model_name", models);
+      }
+    }
+  }
+}
 
 export async function setupProviderManager(node) {
+  let currentProvidersData = [];
   const providerWidget = findWidget(node, "provider");
   const newProviderIdWidget = findWidget(node, "new_provider_id");
 
@@ -82,6 +98,7 @@ export async function setupProviderManager(node) {
   async function refreshProvidersList(selectProviderId = null) {
     try {
       const providers = await fetchProviderInfo();
+      currentProvidersData = providers;
       const providerIds = providers.map((item) => item.id).filter(Boolean);
       if (!providerIds.includes("custom_provider")) {
         providerIds.push("custom_provider");
@@ -117,7 +134,14 @@ export async function setupProviderManager(node) {
       const response = await api.fetchApi(`/llm-mini/config/get?provider=${encodeURIComponent(provider)}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
-      baseUrlWidget.value = data.base_url || "";
+      
+      const rawBaseUrl = data.base_url || "";
+      if (provider === "google" && !rawBaseUrl) {
+        baseUrlWidget.value = t("Leave blank for direct connection", "无需填写 (直连官方)");
+      } else {
+        baseUrlWidget.value = rawBaseUrl;
+      }
+
       if (data.has_key) {
         apiKeyWidget.value = "[CONFIGURED]";
         statusWidget.value = t(
@@ -169,7 +193,10 @@ export async function setupProviderManager(node) {
     }
 
     const apiKey = apiKeyWidget.value;
-    const baseUrl = baseUrlWidget.value;
+    let baseUrl = baseUrlWidget.value;
+    if (provider === "google" && (baseUrl === "无需填写 (直连官方)" || baseUrl === "Leave blank for direct connection")) {
+      baseUrl = "";
+    }
 
     statusWidget.value = t("Saving...", "正在保存...");
     node.setDirtyCanvas(true, true);
@@ -400,9 +427,129 @@ export async function setupProviderManager(node) {
     }
   });
 
+  const refreshModelsLabel = t("Refresh & Configure Model List", "刷新并配置模型列表");
+  node.addWidget("button", refreshModelsLabel, refreshModelsLabel, async () => {
+    const provider = providerWidget.value;
+    if (!provider || provider === "custom_provider") {
+      alert(t("Please select a valid provider first.", "请先选择一个有效的提供商。"));
+      return;
+    }
+
+    statusWidget.value = t("Fetching model list...", "正在获取模型列表...");
+    node.setDirtyCanvas(true, true);
+
+    try {
+      const response = await api.fetchApi("/llm-mini/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      if (!data.models || data.models.length === 0) throw new Error(t("No models returned.", "没有返回可用模型。"));
+
+      statusWidget.value = t("Models loaded successfully.", "模型列表拉取成功。");
+      node.setDirtyCanvas(true, true);
+
+      const providers = await fetchProviderInfo();
+      const pInfo = providers.find(p => p.id === provider);
+      let existingModels = pInfo && pInfo.default_models ? [...pInfo.default_models] : [];
+      existingModels = existingModels.filter(m => m !== "click Refresh Models" && m !== "点击刷新模型");
+
+      showModelSelectionModal(
+        provider,
+        data.models,
+        existingModels,
+        // onSave (保存为配置并同步更新当前画布节点)
+        (selectedList) => {
+          updateAllRelatedNodes(provider, selectedList);
+          statusWidget.value = t("Static default models saved and applied.", "静态默认模型已保存并更新到节点。");
+          node.setDirtyCanvas(true, true);
+        },
+        // onApply (仅临时更新当前画布节点)
+        (selectedList) => {
+          updateAllRelatedNodes(provider, selectedList);
+          statusWidget.value = t("Models temporarily applied to nodes.", "模型列表已临时应用到节点。");
+          node.setDirtyCanvas(true, true);
+        }
+      );
+    } catch (err) {
+      alert(`Refresh failed: ${err.message}`);
+      statusWidget.value = t(`Refresh failed: ${err.message}`, `刷新模型失败: ${err.message}`);
+      node.setDirtyCanvas(true, true);
+    }
+  });
+
+  const customModelInput = node.addWidget("text", t("Custom Model ID", "自定义模型 ID"), "", () => {}, { multiline: false });
+  customModelInput.serializeValue = () => undefined;
+
+  const addModelLabel = t("Add Custom Model", "添加自定义模型");
+  node.addWidget("button", addModelLabel, addModelLabel, async () => {
+    const provider = providerWidget.value;
+    if (!provider || provider === "custom_provider") {
+      alert(t("Please select a valid provider first.", "请先选择一个有效的提供商。"));
+      return;
+    }
+    const newModel = customModelInput.value.trim();
+    if (!newModel) {
+      alert(t("Please enter a model ID.", "请输入模型 ID。"));
+      return;
+    }
+
+    statusWidget.value = t("Adding model...", "正在添加模型...");
+    node.setDirtyCanvas(true, true);
+
+    try {
+      // 现场从服务器拉取最新的配置，彻底避免本地缓存未就绪时的覆盖 Bug
+      const providers = await fetchProviderInfo();
+      const pInfo = providers.find(p => p.id === provider);
+      let existingModels = pInfo && pInfo.default_models ? [...pInfo.default_models] : [];
+      existingModels = existingModels.filter(m => m !== "click Refresh Models" && m !== "点击刷新模型");
+
+      if (existingModels.includes(newModel)) {
+        alert(t("Model ID already exists.", "该模型 ID 已存在。"));
+        statusWidget.value = t("Model already exists.", "模型已存在。");
+        node.setDirtyCanvas(true, true);
+        return;
+      }
+
+      existingModels.push(newModel);
+
+      const response = await api.fetchApi("/llm-mini/config/save-default-models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: provider,
+          default_models: existingModels
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+
+      // 顺便更新本地的 currentProvidersData 缓存
+      if (typeof currentProvidersData !== "undefined" && currentProvidersData) {
+        const localPInfo = currentProvidersData.find(p => p.id === provider);
+        if (localPInfo) {
+          localPInfo.default_models = existingModels;
+        }
+      }
+
+      updateAllRelatedNodes(provider, existingModels);
+
+      statusWidget.value = t(`Model "${newModel}" added successfully!`, `模型 "${newModel}" 添加成功！`);
+      customModelInput.value = "";
+      node.setDirtyCanvas(true, true);
+      alert(t(`Model "${newModel}" added and saved as default.`, `模型 "${newModel}" 已添加并保存为默认静态列表。`));
+    } catch (err) {
+      alert(`Add failed: ${err.message}`);
+      statusWidget.value = t(`Add failed: ${err.message}`, `添加失败: ${err.message}`);
+      node.setDirtyCanvas(true, true);
+    }
+  });
+
   await loadSelectedProviderConfig();
   
-  node.size = [350, 500];
+  node.size = [350, node.computeSize()[1]];
   node.setDirtyCanvas(true, true);
   
   node.onRemoved = function() {

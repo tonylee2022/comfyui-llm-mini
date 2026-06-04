@@ -224,3 +224,25 @@ def delete_provider_config(provider_id: str) -> None:
         
     if changed:
         save_ini(config)
+
+
+def save_provider_default_models(provider_id: str, default_models: list[str]) -> None:
+    config = load_ini()
+    section = f"provider.{provider_id}"
+    if not config.has_section(section):
+        config.add_section(section)
+    
+    models = [m.strip() for m in default_models if m and m.strip()]
+    if models:
+        config[section]["default_models"] = ",".join(models)
+        current_default = config.get(section, "default_model", fallback="").strip()
+        if not current_default or current_default not in models:
+            config[section]["default_model"] = models[0]
+    else:
+        if config.has_option(section, "default_models"):
+            config.remove_option(section, "default_models")
+        if config.has_option(section, "default_model"):
+            config.remove_option(section, "default_model")
+            
+    save_ini(config)
+

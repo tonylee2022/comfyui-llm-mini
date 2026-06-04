@@ -17,8 +17,8 @@
       "stream": { "name": "流式输出" }
     },
     "outputs": {
-      "assistant_response": { "name": "助手回复" },
-      "history_json": { "name": "历史记录 JSON" }
+      "0": { "name": "助手回复" },
+      "1": { "name": "历史记录 JSON" }
     }
   },
   "LLMMiniLoadPersona": {
@@ -28,7 +28,7 @@
       "text": { "name": "文本" }
     },
     "outputs": {
-      "system_prompt_input": { "name": "系统提示词输入" }
+      "0": { "name": "系统提示词输入" }
     }
   },
   "LLMMiniOpenAICodexImage": {
@@ -46,7 +46,7 @@
       "mask": { "name": "遮罩" }
     },
     "outputs": {
-      "image": { "name": "图像" }
+      "0": { "name": "图像" }
     }
   },
   "LLMMiniXAIImagine": {
@@ -60,7 +60,7 @@
       "images": { "name": "参考图像", "tooltip": "可选参考图。连接后会自动增加新的图像输入。" }
     },
     "outputs": {
-      "image": { "name": "图像" }
+      "0": { "name": "图像" }
     }
   },
   "LLMMiniXAIVideo": {
@@ -75,7 +75,7 @@
       "image": { "name": "图像" }
     },
     "outputs": {
-      "video": { "name": "视频" }
+      "0": { "name": "视频" }
     }
   },
   "LLMMiniXAIVideoReference": {
@@ -90,7 +90,7 @@
       "images": { "name": "参考图像", "tooltip": "参考图（最多7张）。连接后会自动增加新的图像输入。在提示词中可以使用 @Image1, @Image2 等来指代它们。" }
     },
     "outputs": {
-      "video": { "name": "视频" }
+      "0": { "name": "视频" }
     }
   },
   "LLMMiniXAIVideoEdit": {
@@ -102,7 +102,7 @@
       "seed": { "name": "随机种" }
     },
     "outputs": {
-      "video": { "name": "视频" }
+      "0": { "name": "视频" }
     }
   },
   "LLMMiniXAIVideoExtend": {
@@ -115,7 +115,7 @@
       "seed": { "name": "随机种" }
     },
     "outputs": {
-      "video": { "name": "视频" }
+      "0": { "name": "视频" }
     }
   },
   "LLMMiniPersonaManager": {
@@ -126,7 +126,7 @@
       "content": { "name": "面具内容" }
     },
     "outputs": {
-      "system_prompt_input": { "name": "系统提示词输入" }
+      "0": { "name": "系统提示词输入" }
     }
   },
   "LLMMiniGoogleImagen": {
@@ -141,7 +141,7 @@
       "seed": { "name": "随机种" }
     },
     "outputs": {
-      "image": { "name": "图像" }
+      "0": { "name": "图像" }
     }
   },
   "LLMMiniGoogleGeminiNanoBanana": {
@@ -157,8 +157,8 @@
       "seed": { "name": "随机种" }
     },
     "outputs": {
-      "image": { "name": "图像" },
-      "text": { "name": "文本" }
+      "0": { "name": "图像" },
+      "1": { "name": "文本" }
     }
   },
   "LLMMiniGoogleGeminiNanoBananaPro": {
@@ -175,8 +175,8 @@
       "seed": { "name": "随机种" }
     },
     "outputs": {
-      "image": { "name": "图像" },
-      "text": { "name": "文本" }
+      "0": { "name": "图像" },
+      "1": { "name": "文本" }
     }
   },
   "LLMMiniGoogleGeminiNanoBanana2": {
@@ -194,8 +194,8 @@
       "seed": { "name": "随机种" }
     },
     "outputs": {
-      "image": { "name": "图像" },
-      "text": { "name": "文本" }
+      "0": { "name": "图像" },
+      "1": { "name": "文本" }
     }
   },
   "LLMMiniProviderManager": {

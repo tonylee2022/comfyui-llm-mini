@@ -1,11 +1,20 @@
 import { api } from "../../../../scripts/api.js";
+import { showModelSelectionModal } from "./modal.js";
 
 export function currentLocale() {
-  return localStorage["AGL.Locale"] || localStorage["Comfy.Settings.AGL.Locale"] || "en-US";
+  return localStorage["AGL.Locale"] || 
+         localStorage["Comfy.Settings.AGL.Locale"] || 
+         localStorage["Comfy.Locale"] || 
+         localStorage["Comfy.Settings.Comfy.Locale"] || 
+         navigator.language || 
+         "en-US";
 }
 
 export function isChineseLocale() {
-  return currentLocale().toLowerCase().startsWith("zh");
+  const locale = currentLocale();
+  const result = locale.toLowerCase().startsWith("zh");
+  console.log("[LLM Mini] isChineseLocale check. Detected locale:", locale, "Result:", result);
+  return result;
 }
 
 export function t(en, zh) {
@@ -25,8 +34,17 @@ export function updateCombo(node, name, values) {
   const widget = findWidget(node, name);
   if (!widget || !values || !values.length) return false;
   widget.type = "combo";
+  
   widget.options = widget.options || {};
-  widget.options.values = values;
+  if (!widget.options.values) {
+    widget.options.values = [];
+  }
+  
+  // Vue 响应式安全修复：通过清空并 push 来进行“就地修改”（In-place mutation）
+  // 这样可以保留 Vue 3 的 Proxy 代理对象，同时触发数组变动监听，避免直接覆盖引用导致响应式失效
+  widget.options.values.length = 0;
+  widget.options.values.push(...values);
+  
   const oldValue = widget.value;
   if (!values.includes(widget.value)) {
     widget.value = values[0];
@@ -34,6 +52,7 @@ export function updateCombo(node, name, values) {
   if (widget.callback && widget.value !== oldValue) {
     widget.callback(widget.value);
   }
+  
   node.setDirtyCanvas(true, true);
   if (node.graph) node.graph.setDirtyCanvas(true, true);
   return true;
@@ -89,8 +108,11 @@ export function removeRefreshButtons(node) {
 export function addRefreshButton(node) {
   removeRefreshButtons(node);
   const label = t("Refresh Models", "刷新模型");
+  console.log("[LLM Mini] addRefreshButton called for node:", node.title || node.name);
   node.addWidget("button", label, label, async () => {
+    console.log("[LLM Mini] Refresh Models button clicked! Node:", node);
     const provider = widgetValue(node, "provider") || "openai";
+    console.log("[LLM Mini] Selected provider:", provider);
     try {
       const response = await api.fetchApi("/llm-mini/models", {
         method: "POST",
@@ -98,13 +120,33 @@ export function addRefreshButton(node) {
         body: JSON.stringify({ provider }),
       });
       const data = await response.json();
+      console.log("[LLM Mini] Received models from server:", data);
       if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
       if (!data.models || data.models.length === 0) throw new Error(t("No models returned.", "没有返回可用模型。"));
-      updateCombo(node, "model_name", data.models);
+      
       if (!data.has_credentials && provider !== "ollama") {
         alert(t("Models loaded from defaults. Add credentials to fetch live provider models.", "已加载默认模型。请添加凭据以获取实时模型列表。"));
       }
+      
+      const modelWidget = findWidget(node, "model_name");
+      const currentlyConfigured = modelWidget && modelWidget.options && modelWidget.options.values ? [...modelWidget.options.values] : [];
+
+      // 打开精美的多选选择框
+      showModelSelectionModal(
+        provider,
+        data.models,
+        currentlyConfigured,
+        // onSave (保存为静态配置并更新当前界面)
+        (selectedList) => {
+          updateCombo(node, "model_name", selectedList);
+        },
+        // onApply (仅临时更新当前界面)
+        (selectedList) => {
+          updateCombo(node, "model_name", selectedList);
+        }
+      );
     } catch (error) {
+      console.error("[LLM Mini] Refresh models failed:", error);
       alert(`LLM Mini: ${error.message}`);
     }
   });

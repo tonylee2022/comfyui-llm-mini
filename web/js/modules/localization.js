@@ -39,28 +39,63 @@ export function applyLocalization(node) {
     "files": { zh: "参考文件", en: "Reference Files" }
   };
 
+  console.log(`[LLM Mini] applyLocalization start. Node: ${node.title || node.name}, isZh: ${isZh}`);
+  let anyChanged = false;
+
   if (node.inputs) {
     node.inputs.forEach((input) => {
-      const tVal = translations[input.name];
+      const nameKey = input.name ? input.name.toLowerCase() : "";
+      const tVal = translations[nameKey];
       if (tVal) {
-        input.label = isZh ? tVal.zh : tVal.en;
+        const expected = isZh ? tVal.zh : tVal.en;
+        if (input.label !== expected) {
+          console.log(`[LLM Mini] Localizing Input: ${input.name} -> ${expected}`);
+          input.label = expected;
+          anyChanged = true;
+        }
       }
     });
   }
+
   if (node.outputs) {
+    console.log(`[LLM Mini] Node outputs:`, node.outputs);
     node.outputs.forEach((output) => {
-      const tVal = translations[output.name];
+      const nameKey = output.name ? output.name.toLowerCase() : "";
+      const tVal = translations[nameKey];
       if (tVal) {
-        output.label = isZh ? tVal.zh : tVal.en;
+        const expected = isZh ? tVal.zh : tVal.en;
+        if (output.label !== expected) {
+          console.log(`[LLM Mini] Localizing Output: ${output.name} -> ${expected}`);
+          output.label = expected;
+          anyChanged = true;
+        }
+      } else {
+        console.log(`[LLM Mini] No translation key found for output: ${output.name} (lowercased: ${nameKey})`);
       }
     });
   }
+
   if (node.widgets) {
     node.widgets.forEach((widget) => {
-      const tVal = translations[widget.name];
+      const nameKey = widget.name ? widget.name.toLowerCase() : "";
+      const tVal = translations[nameKey];
       if (tVal) {
-        widget.label = isZh ? tVal.zh : tVal.en;
+        const expected = isZh ? tVal.zh : tVal.en;
+        if (widget.label !== expected) {
+          widget.label = expected;
+          anyChanged = true;
+        }
       }
     });
+  }
+
+  if (anyChanged) {
+    console.log(`[LLM Mini] applyLocalization: properties changed, requesting canvas redraw`);
+    if (typeof node.setDirtyCanvas === "function") {
+      node.setDirtyCanvas(true, true);
+    }
+    if (node.graph && typeof node.graph.setDirtyCanvas === "function") {
+      node.graph.setDirtyCanvas(true, true);
+    }
   }
 }

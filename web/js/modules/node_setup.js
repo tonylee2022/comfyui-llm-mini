@@ -24,12 +24,8 @@ export function setupNodeByType(node, nodeName) {
   setTimeout(() => applyLocalization(node), 20);
 
   if (nodeName === "LLMMiniApiChat") {
-    node.size = [300, 380];
+    node.size = [300, node.computeSize()[1]];
     setTimeout(() => refreshProviderWidgets(node), 50);
-    setTimeout(() => {
-      addRefreshButton(node);
-      node.size = [300, 380];
-    }, 100);
   }
   
   if (nodeName === "LLMMiniLoadPersona") {
@@ -39,13 +35,25 @@ export function setupNodeByType(node, nodeName) {
   if (["LLMMiniXAIVideo", "LLMMiniXAIVideoReference", "LLMMiniXAIVideoEdit", "LLMMiniXAIVideoExtend"].includes(nodeName)) {
     node.size = [300, node.computeSize()[1]];
   }
+
+  const imageNodes = [
+    "LLMMiniOpenAICodexImage",
+    "LLMMiniXAIImagine",
+    "LLMMiniGoogleImagen",
+    "LLMMiniGoogleGeminiNanoBanana",
+    "LLMMiniGoogleGeminiNanoBananaPro",
+    "LLMMiniGoogleGeminiNanoBanana2"
+  ];
+  if (imageNodes.includes(nodeName)) {
+    node.size = [300, node.computeSize()[1]];
+  }
   
   if (nodeName === "LLMMiniPersonaManager") {
-    setTimeout(() => setupPersonaManager(node), 50);
+    setupPersonaManager(node);
   }
   
   if (nodeName === "LLMMiniProviderManager") {
-    setTimeout(() => setupProviderManager(node), 50);
+    setupProviderManager(node);
   }
   
   if (nodeName === "LLMMiniGoogleImagen") {

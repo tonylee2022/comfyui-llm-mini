@@ -127,6 +127,22 @@ def register_routes() -> None:
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=500)
 
+    @PromptServer.instance.routes.post("/llm-mini/config/save-default-models")
+    async def save_default_models_route(request):
+        try:
+            data = await request.json()
+            provider = data.get("provider", "").strip()
+            if not provider:
+                return web.json_response({"error": "Provider cannot be empty"}, status=400)
+            default_models = data.get("default_models", [])
+            if not isinstance(default_models, list):
+                return web.json_response({"error": "default_models must be a list"}, status=400)
+            from .core.config import save_provider_default_models
+            await asyncio.to_thread(save_provider_default_models, provider, default_models)
+            return web.json_response({"success": True})
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
     @PromptServer.instance.routes.post("/llm-mini/oauth/start")
     async def oauth_start_route(request):
         try:
