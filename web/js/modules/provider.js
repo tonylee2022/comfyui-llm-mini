@@ -547,6 +547,15 @@ export async function setupProviderManager(node) {
     }
   });
 
+  const originalConfigure = node.onConfigure;
+  node.onConfigure = function() {
+    const r = originalConfigure ? originalConfigure.apply(this, arguments) : undefined;
+    setTimeout(() => {
+      loadSelectedProviderConfig();
+    }, 100);
+    return r;
+  };
+
   await loadSelectedProviderConfig();
   
   node.size = [350, node.computeSize()[1]];

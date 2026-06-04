@@ -128,5 +128,19 @@ export async function setupPersonaManager(node) {
     }
   });
 
+  const originalConfigure = node.onConfigure;
+  node.onConfigure = function() {
+    const r = originalConfigure ? originalConfigure.apply(this, arguments) : undefined;
+    setTimeout(async () => {
+      if (nameWidget && nameWidget.value) {
+        const content = await fetchPersonaContent(nameWidget.value);
+        if (contentWidget) contentWidget.value = content;
+        if (newNameWidget) newNameWidget.value = nameWidget.value;
+        node.setDirtyCanvas && node.setDirtyCanvas(true, true);
+      }
+    }, 100);
+    return r;
+  };
+
   node.setSize(node.computeSize());
 }
