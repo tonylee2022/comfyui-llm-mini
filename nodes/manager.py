@@ -17,7 +17,11 @@ class LLMMiniProviderManager(IO.ComfyNode):
             category="ComfyUI LLM Mini/Config",
             inputs=[
                 IO.Combo.Input("provider", options=providers, default=providers[0] if providers else "xai"),
-                IO.String.Input("new_provider_id", optional=True, tooltip="Optional. Enter a new ID to add a custom OpenAI Compatible provider."),
+                IO.String.Input(
+                    "new_provider_id",
+                    optional=True,
+                    tooltip="Optional. Start with a letter or number; use only letters, numbers, dots, underscores, or hyphens (maximum 64 characters).",
+                ),
             ],
             outputs=[],  # 无任何输出插槽，不连线
             hidden=[

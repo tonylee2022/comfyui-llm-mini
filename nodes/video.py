@@ -20,7 +20,7 @@ class XAIVideoNode(IO.ComfyNode):
                 IO.Combo.Input("aspect_ratio", options=["auto", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16"], default="auto"),
                 IO.Combo.Input("resolution", options=["720p", "480p"], default="720p"),
                 IO.Int.Input("duration", default=6, min=1, max=15, step=1),
-                IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1),
+                IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1, tooltip="Cache and re-execution control only; not sent to xAI."),
                 IO.Image.Input("image", optional=True),
             ],
             outputs=[
@@ -54,7 +54,7 @@ class XAIVideoReferenceNode(IO.ComfyNode):
                 IO.Combo.Input("aspect_ratio", options=["auto", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16"], default="auto"),
                 IO.Combo.Input("resolution", options=["720p", "480p"], default="720p"),
                 IO.Int.Input("duration", default=6, min=1, max=10, step=1),
-                IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1),
+                IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1, tooltip="Cache and re-execution control only; not sent to xAI."),
                 IO.Autogrow.Input(
                     "images",
                     template=IO.Autogrow.TemplateNames(
@@ -101,7 +101,7 @@ class XAIVideoEditNode(IO.ComfyNode):
                 IO.String.Input("prompt", multiline=True, default=""),
                 IO.Combo.Input("model_name", options=["grok-imagine-video"], default="grok-imagine-video"),
                 IO.Video.Input("video"),
-                IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1),
+                IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1, tooltip="Cache and re-execution control only; not sent to xAI."),
             ],
             outputs=[
                 IO.Video.Output("video"),
@@ -133,7 +133,7 @@ class XAIVideoExtendNode(IO.ComfyNode):
                 IO.Combo.Input("model_name", options=["grok-imagine-video"], default="grok-imagine-video"),
                 IO.Video.Input("video"),
                 IO.Int.Input("duration", default=8, min=2, max=10, step=1),
-                IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1),
+                IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1, tooltip="Cache and re-execution control only; not sent to xAI."),
             ],
             outputs=[
                 IO.Video.Output("video"),

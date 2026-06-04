@@ -23,13 +23,14 @@
 
 ## 功能
 
-- 先选择提供商，再刷新模型列表，在节点面板中选择具体模型。
-- 提供商 下拉框只显示 `config.ini` 中的 `[provider.xxx]`。
+- API Chat 使用提供商管理器中保存的模型列表，不在聊天节点内提供刷新按钮。
+- API Chat 的提供商下拉框只显示已配置有效 API Key 或 OAuth 凭据的聊天提供商。
 - 支持 API Key、环境变量、Codex OAuth、xAI OAuth 凭据路径。
 - 支持 OpenAI-compatible、Claude、Gemini 聊天接口。
 - 支持 `persona/*.txt` 人格面具作为系统提示词。
 - OpenAI/Codex 图像共用面板，但后端实现路径分开。
 - 支持 xAI Imagine 与 xAI Video。
+- API Chat 默认从输出历史中移除 Base64 图像，避免工作流文件过大；可通过节点开关保留。
 
 ## 配置
 
@@ -59,11 +60,19 @@ python oauth_login.py --provider xai --flow browser
 
 ```ini
 [provider.local_proxy]
+display_name = Local Proxy
 api_key = sk-...
 base_url = http://192.168.5.1:3000/api/
 ```
 
-重启 ComfyUI 后，聊天节点的 provider 下拉框会出现 `local_proxy`（可自定义名称），并与 `openai` 独立。
+Provider ID 必须以字母或数字开头，只能包含字母、数字、点、下划线和连字符，最长 64 个字符。`display_name` 可使用更友好的显示名称。
+
+重启 ComfyUI 后，聊天节点的 provider 下拉框会出现 `local_proxy`，并与 `openai` 独立。
+
+## 节点参数说明
+
+- OpenAI/Codex 图像节点切换到 Codex 时，`model_name` 表示 Responses API 主模型，默认使用 `gpt-5.5`。
+- OpenAI/Codex 与 xAI 节点中标注为缓存控制的 `seed` 只用于触发重新执行，不会发送给对应 API。
 
 ### Google (Gemini) 授权配置
 

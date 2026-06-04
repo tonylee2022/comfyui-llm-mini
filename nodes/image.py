@@ -36,7 +36,12 @@ class OpenAICodexImageNode(IO.ComfyNode):
             inputs=[
                 IO.String.Input("prompt", multiline=True, default=""),
                 IO.Combo.Input("execution_backend", options=["openai", "codex"], default="openai"),
-                IO.Combo.Input("model_name", options=["gpt-image-2", "gpt-image-1.5", "gpt-image-1"], default="gpt-image-2"),
+                IO.Combo.Input(
+                    "model_name",
+                    options=["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-5.5"],
+                    default="gpt-image-2",
+                    tooltip="OpenAI uses a GPT Image model. Codex uses a Responses API main model; saved gpt-image-* values fall back to gpt-5.5.",
+                ),
                 IO.Combo.Input(
                     "size",
                     options=["auto", "1024x1024", "1024x1536", "1536x1024", "2048x2048", "2048x1152", "1152x2048", "3840x2160", "2160x3840"],
@@ -44,8 +49,8 @@ class OpenAICodexImageNode(IO.ComfyNode):
                 ),
                 IO.Combo.Input("quality", options=["low", "medium", "high"], default="low"),
                 IO.Combo.Input("background", options=["auto", "opaque", "transparent"], default="auto"),
-                IO.Int.Input("n", default=1, min=1, max=8, step=1),
-                IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1, control_after_generate=True),
+                IO.Int.Input("n", default=1, min=1, max=8, step=1, tooltip="Number of images for OpenAI. Codex image tool output count is controlled by the service."),
+                IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1, control_after_generate=True, tooltip="Cache and re-execution control only; not sent to OpenAI or Codex."),
                 IO.Autogrow.Input(
                     "images",
                     template=IO.Autogrow.TemplateNames(
@@ -55,7 +60,7 @@ class OpenAICodexImageNode(IO.ComfyNode):
                     ),
                     tooltip="Optional reference images. Add image inputs dynamically as needed.",
                 ),
-                IO.Mask.Input("mask", optional=True),
+                IO.Mask.Input("mask", optional=True, tooltip="OpenAI image edit mask. Mask value 1 marks the region to edit. Not used by Codex."),
             ],
             outputs=[
                 IO.Image.Output("image"),
@@ -74,7 +79,7 @@ class OpenAICodexImageNode(IO.ComfyNode):
         try:
             with StatusUpdater(node_id, f"Generating ({execution_backend.upper()})") as updater:
                 if execution_backend == "codex":
-                    res = codex_image(prompt, model_name, size, image_tensors)
+                    res = codex_image(prompt, model_name, size, quality, background, image_tensors)
                 else:
                     res = openai_image(prompt, model_name, size, quality, background, n, seed, image_tensors, mask, status_updater=updater)
                 return (res[0],)
@@ -95,7 +100,7 @@ class XAIImagineNode(IO.ComfyNode):
                 IO.Combo.Input("model_name", options=["grok-imagine-image-quality", "grok-imagine-image"], default="grok-imagine-image-quality"),
                 IO.Combo.Input("aspect_ratio", options=["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"], default="1:1"),
                 IO.Combo.Input("resolution", options=["1k", "2k"], default="1k"),
-                IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1, control_after_generate=True),
+                IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1, control_after_generate=True, tooltip="Cache and re-execution control only; not sent to xAI."),
                 IO.Autogrow.Input(
                     "images",
                     template=IO.Autogrow.TemplateNames(
@@ -310,6 +315,7 @@ class GoogleGeminiNanoBananaProNode(IO.ComfyNode):
                 res_image, res_text = google_gemini_image_generate(
                     prompt=prompt,
                     model=model,
+                    image_tensors=image_tensors,
                     files=files,
                     aspect_ratio=aspect_ratio,
                     resolution=resolution,
@@ -382,6 +388,7 @@ class GoogleGeminiNanoBanana2Node(IO.ComfyNode):
                 res_image, res_text = google_gemini_image_generate(
                     prompt=prompt,
                     model=model,
+                    image_tensors=image_tensors,
                     files=files,
                     aspect_ratio=aspect_ratio,
                     resolution=resolution,

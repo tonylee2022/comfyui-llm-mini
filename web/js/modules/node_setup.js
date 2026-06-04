@@ -1,7 +1,7 @@
-import { refreshProviderWidgets, addRefreshButton, findWidget, updateCombo } from "./utils.js";
+import { refreshProviderWidgets, findWidget, updateCombo } from "./utils.js";
 import { setupPersonaManager } from "./persona.js";
 import { setupProviderManager } from "./provider.js";
-import { applyLocalization } from "./localization.js";
+import { scheduleLocalization } from "./localization.js";
 
 export const TARGET_NODES = new Set([
   "LLMMiniApiChat",
@@ -21,7 +21,7 @@ export const TARGET_NODES = new Set([
 ]);
 
 export function setupNodeByType(node, nodeName) {
-  setTimeout(() => applyLocalization(node), 20);
+  scheduleLocalization(node);
 
   if (nodeName === "LLMMiniApiChat") {
     node.size = [300, node.computeSize()[1]];
@@ -46,6 +46,25 @@ export function setupNodeByType(node, nodeName) {
   ];
   if (imageNodes.includes(nodeName)) {
     node.size = [300, node.computeSize()[1]];
+  }
+
+  if (nodeName === "LLMMiniOpenAICodexImage") {
+    const backendWidget = findWidget(node, "execution_backend");
+    const modelWidget = findWidget(node, "model_name");
+    if (backendWidget && modelWidget) {
+      const updateModelOptions = (backend) => {
+        const models = backend === "codex"
+          ? ["gpt-5.5"]
+          : ["gpt-image-2", "gpt-image-1.5", "gpt-image-1"];
+        updateCombo(node, "model_name", models);
+      };
+      updateModelOptions(backendWidget.value);
+      const originalCallback = backendWidget.callback;
+      backendWidget.callback = function (value) {
+        if (originalCallback) originalCallback.apply(this, arguments);
+        updateModelOptions(value);
+      };
+    }
   }
   
   if (nodeName === "LLMMiniPersonaManager") {

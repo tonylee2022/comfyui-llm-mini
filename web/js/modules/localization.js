@@ -1,96 +1,138 @@
 import { isChineseLocale } from "./utils.js";
 
-export function applyLocalization(node) {
-  const isZh = isChineseLocale();
-  const translations = {
-    "provider": { zh: "提供商", en: "Provider" },
-    "model_name": { zh: "模型", en: "Model" },
-    "system_prompt": { zh: "系统提示词", en: "System Prompt" },
-    "user_prompt": { zh: "用户提示词", en: "User Prompt" },
-    "temperature": { zh: "温度", en: "Temperature" },
-    "max_tokens": { zh: "最大 Token", en: "Max Tokens" },
-    "is_locked": { zh: "锁定缓存", en: "Lock Cache" },
-    "stream": { zh: "流式输出", en: "Stream" },
-    "system_prompt_input": { zh: "加载人格面具", en: "Load Persona" },
-    "image": { zh: "图像", en: "Image" },
-    "images": { zh: "参考图像", en: "Reference Images" },
-    "image_url": { zh: "图像 URL", en: "Image URL" },
-    "assistant_response": { zh: "助手回复", en: "Assistant Response" },
-    "history_json": { zh: "历史记录 JSON", en: "History JSON" },
-    "persona_name": { zh: "人格面具", en: "Persona" },
-    "new_name": { zh: "新名称", en: "New Name" },
-    "content": { zh: "面具内容", en: "Content" },
-    "text": { zh: "文本", en: "Text" },
-    "prompt": { zh: "提示词", en: "Prompt" },
-    "execution_backend": { zh: "执行后端", en: "Execution Backend" },
-    "size": { zh: "尺寸", en: "Size" },
-    "quality": { zh: "质量", en: "Quality" },
-    "background": { zh: "背景", en: "Background" },
-    "n": { zh: "数量", en: "Quantity" },
-    "seed": { zh: "随机种", en: "Seed" },
-    "mask": { zh: "遮罩", en: "Mask" },
-    "aspect_ratio": { zh: "宽高比", en: "Aspect Ratio" },
-    "resolution": { zh: "分辨率", en: "Resolution" },
-    "duration": { zh: "时长", en: "Duration" },
-    "video": { zh: "视频", en: "Video" },
-    "model": { zh: "模型", en: "Model" },
-    "response_modalities": { zh: "响应模态", en: "Response Modalities" },
-    "thinking_level": { zh: "思考级别", en: "Thinking Level" },
-    "files": { zh: "参考文件", en: "Reference Files" }
-  };
+const localizationTimers = new WeakMap();
+const translations = {
+  "provider": { zh: "提供商", en: "Provider" },
+  "model_name": { zh: "模型", en: "Model" },
+  "system_prompt": { zh: "系统提示词", en: "System Prompt" },
+  "user_prompt": { zh: "用户提示词", en: "User Prompt" },
+  "temperature": { zh: "温度", en: "Temperature" },
+  "max_tokens": { zh: "最大 Token", en: "Max Tokens" },
+  "is_locked": { zh: "锁定缓存", en: "Lock Cache" },
+  "retain_images_in_history": { zh: "历史保留图像", en: "Retain Images in History" },
+  "stream": { zh: "流式输出", en: "Stream" },
+  "system_prompt_input": { zh: "加载人格面具", en: "Load Persona" },
+  "image": { zh: "图像", en: "Image" },
+  "images": { zh: "参考图像", en: "Reference Images" },
+  "image_url": { zh: "图像 URL", en: "Image URL" },
+  "assistant_response": { zh: "助手回复", en: "Assistant Response" },
+  "history_json": { zh: "历史记录 JSON", en: "History JSON" },
+  "persona_name": { zh: "人格面具", en: "Persona" },
+  "new_name": { zh: "新名称", en: "New Name" },
+  "content": { zh: "面具内容", en: "Content" },
+  "text": { zh: "文本", en: "Text" },
+  "prompt": { zh: "提示词", en: "Prompt" },
+  "execution_backend": { zh: "执行后端", en: "Execution Backend" },
+  "size": { zh: "尺寸", en: "Size" },
+  "quality": { zh: "质量", en: "Quality" },
+  "background": { zh: "背景", en: "Background" },
+  "n": { zh: "数量", en: "Quantity" },
+  "seed": { zh: "随机种", en: "Seed" },
+  "mask": { zh: "遮罩", en: "Mask" },
+  "aspect_ratio": { zh: "宽高比", en: "Aspect Ratio" },
+  "resolution": { zh: "分辨率", en: "Resolution" },
+  "duration": { zh: "时长", en: "Duration" },
+  "video": { zh: "视频", en: "Video" },
+  "model": { zh: "模型", en: "Model" },
+  "response_modalities": { zh: "响应模态", en: "Response Modalities" },
+  "thinking_level": { zh: "思考级别", en: "Thinking Level" },
+  "files": { zh: "参考文件", en: "Reference Files" }
+};
 
-  console.log(`[LLM Mini] applyLocalization start. Node: ${node.title || node.name}, isZh: ${isZh}`);
+export function translatedName(name) {
+  const nameKey = name ? String(name).toLowerCase() : "";
+  let translation = translations[nameKey];
+  let suffix = "";
+  if (!translation) {
+    const match = nameKey.match(/^(.+)_([0-9]+)$/);
+    if (match) {
+      translation = translations[match[1]];
+      suffix = ` ${match[2]}`;
+    }
+  }
+  if (!translation) return null;
+  return `${isChineseLocale() ? translation.zh : translation.en}${suffix}`;
+}
+
+function applyItemLocalization(item, includeLocalizedName = false) {
+  const expected = translatedName(item?.name);
+  if (!expected) return false;
+
+  let changed = false;
+  if (item.label !== expected) {
+    item.label = expected;
+    changed = true;
+  }
+  if (includeLocalizedName && item.localized_name !== expected) {
+    item.localized_name = expected;
+    changed = true;
+  }
+  return changed;
+}
+
+function localizeInputSpec(spec, expected) {
+  if (Array.isArray(spec)) {
+    if (!spec[1] || typeof spec[1] !== "object" || Array.isArray(spec[1])) {
+      spec[1] = {};
+    }
+    spec[1].display_name = expected;
+  } else if (spec && typeof spec === "object") {
+    spec.display_name = expected;
+  }
+}
+
+export function localizeVueNodeDef(nodeDef) {
+  const inputGroups = nodeDef?.input || nodeDef?.inputs || {};
+  for (const group of ["required", "optional"]) {
+    const inputs = inputGroups[group] || {};
+    for (const [name, spec] of Object.entries(inputs)) {
+      const expected = translatedName(name);
+      if (expected) localizeInputSpec(spec, expected);
+    }
+  }
+
+  if (Array.isArray(nodeDef?.output_name)) {
+    nodeDef.output_name = nodeDef.output_name.map((name) => translatedName(name) || name);
+  }
+}
+
+export function scheduleLocalization(node, delay = 20) {
+  const previous = localizationTimers.get(node);
+  if (previous) clearTimeout(previous);
+  const timer = setTimeout(() => {
+    localizationTimers.delete(node);
+    const apply = () => applyLocalization(node);
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(apply);
+    } else {
+      apply();
+    }
+  }, delay);
+  localizationTimers.set(node, timer);
+}
+
+export function applyLocalization(node) {
   let anyChanged = false;
 
   if (node.inputs) {
     node.inputs.forEach((input) => {
-      const nameKey = input.name ? input.name.toLowerCase() : "";
-      const tVal = translations[nameKey];
-      if (tVal) {
-        const expected = isZh ? tVal.zh : tVal.en;
-        if (input.label !== expected) {
-          console.log(`[LLM Mini] Localizing Input: ${input.name} -> ${expected}`);
-          input.label = expected;
-          anyChanged = true;
-        }
-      }
+      anyChanged = applyItemLocalization(input, true) || anyChanged;
     });
   }
 
   if (node.outputs) {
-    console.log(`[LLM Mini] Node outputs:`, node.outputs);
     node.outputs.forEach((output) => {
-      const nameKey = output.name ? output.name.toLowerCase() : "";
-      const tVal = translations[nameKey];
-      if (tVal) {
-        const expected = isZh ? tVal.zh : tVal.en;
-        if (output.label !== expected) {
-          console.log(`[LLM Mini] Localizing Output: ${output.name} -> ${expected}`);
-          output.label = expected;
-          anyChanged = true;
-        }
-      } else {
-        console.log(`[LLM Mini] No translation key found for output: ${output.name} (lowercased: ${nameKey})`);
-      }
+      anyChanged = applyItemLocalization(output, true) || anyChanged;
     });
   }
 
   if (node.widgets) {
     node.widgets.forEach((widget) => {
-      const nameKey = widget.name ? widget.name.toLowerCase() : "";
-      const tVal = translations[nameKey];
-      if (tVal) {
-        const expected = isZh ? tVal.zh : tVal.en;
-        if (widget.label !== expected) {
-          widget.label = expected;
-          anyChanged = true;
-        }
-      }
+      anyChanged = applyItemLocalization(widget) || anyChanged;
     });
   }
 
   if (anyChanged) {
-    console.log(`[LLM Mini] applyLocalization: properties changed, requesting canvas redraw`);
     if (typeof node.setDirtyCanvas === "function") {
       node.setDirtyCanvas(true, true);
     }

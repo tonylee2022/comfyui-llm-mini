@@ -23,13 +23,14 @@ Lightweight ComfyUI nodes for LLM provider access, personas, image generation, a
 
 ## Features
 
-- Provider-first API chat node with model list refresh in the node UI.
-- Provider dropdown menu only displays the `[provider.xxx]` sections in `config.ini`.
+- API Chat uses model lists saved by Provider Manager and does not add a refresh button to the chat node.
+- API Chat only lists chat providers with a valid API key or OAuth credential.
 - API key, environment variable, Codex OAuth, and xAI OAuth credential paths.
 - OpenAI-compatible, Claude, and Gemini chat providers.
 - Persona `.txt` files as system prompt inputs.
 - Shared OpenAI/Codex image panel with separate backend implementations.
 - xAI Imagine and xAI Video nodes.
+- API Chat strips Base64 images from output history by default to keep workflow files small, with an opt-in switch to retain them.
 
 ## Configuration
 
@@ -59,11 +60,19 @@ Keep `openai` for the official OpenAI endpoint. Put local proxies or third-party
 
 ```ini
 [provider.local_proxy]
+display_name = Local Proxy
 api_key = sk-...
 base_url = http://192.168.5.1:3000/api/
 ```
 
-Restart ComfyUI and the chat node provider menu will show `local_proxy` (or your custom name) separately from `openai`.
+Provider IDs must start with a letter or number, may contain only letters, numbers, dots, underscores, and hyphens, and are limited to 64 characters. Use `display_name` for a friendlier label.
+
+Restart ComfyUI and the chat node provider menu will show `local_proxy` separately from `openai`.
+
+## Node Parameters
+
+- When the OpenAI/Codex Image node uses Codex, `model_name` is the Responses API main model and defaults to `gpt-5.5`.
+- `seed` inputs marked as cache controls on OpenAI/Codex and xAI nodes trigger re-execution but are not sent to those APIs.
 
 ### Google (Gemini) Authorization
 

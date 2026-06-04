@@ -1,7 +1,9 @@
 import { api } from "../../../../scripts/api.js";
 import { app } from "../../../../scripts/app.js";
-import { t, findWidget, updateCombo, fetchProviderInfo } from "./utils.js";
+import { t, findWidget, updateCombo, fetchProviderInfo, refreshProviderWidgets } from "./utils.js";
 import { showModelSelectionModal } from "./modal.js";
+
+const PROVIDER_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 function updateAllRelatedNodes(providerId, models) {
   if (!app.graph || !app.graph._nodes) return;
@@ -14,6 +16,12 @@ function updateAllRelatedNodes(providerId, models) {
       }
     }
   }
+}
+
+async function refreshAllApiChatNodes() {
+  if (!app.graph || !app.graph._nodes) return;
+  const chatNodes = app.graph._nodes.filter((item) => item && item.comfyClass === "LLMMiniApiChat");
+  await Promise.all(chatNodes.map((item) => refreshProviderWidgets(item)));
 }
 
 export async function setupProviderManager(node) {
@@ -111,6 +119,7 @@ export async function setupProviderManager(node) {
       }
       
       await loadSelectedProviderConfig();
+      await refreshAllApiChatNodes();
     } catch (e) {
       console.warn("Failed to refresh providers list:", e);
     }
@@ -187,6 +196,13 @@ export async function setupProviderManager(node) {
     if (provider === "custom_provider") {
       if (!newId) {
         alert(t("Please enter a new Provider ID.", "请输入新提供商 ID。"));
+        return;
+      }
+      if (!PROVIDER_ID_PATTERN.test(newId)) {
+        alert(t(
+          "Provider ID must start with a letter or number and contain only letters, numbers, dots, underscores, or hyphens (maximum 64 characters).",
+          "提供商 ID 必须以字母或数字开头，仅可包含字母、数字、点、下划线或连字符，最长 64 个字符。"
+        ));
         return;
       }
       provider = newId;

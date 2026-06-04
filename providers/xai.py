@@ -7,8 +7,8 @@ import requests
 
 from ..core.config import normalize_base_url, resolve_provider
 from ..core.http_logging import log_http_response
-from ..core.media import download_video_to_comfy, get_video_path_from_input, image_source_to_tensor, tensor_to_data_uri
-from ..core.oauth import get_oauth_token
+from ..core.media import cleanup_upload_temp_file, download_video_to_comfy, get_video_path_from_input, image_source_to_tensor, tensor_to_data_uri
+from ..core.oauth import resolve_oauth_marker
 
 
 ERROR_TRANSLATIONS = {
@@ -99,10 +99,13 @@ def _parse_xai_error(response) -> str:
 def xai_credentials(api_key: str = "", base_url: str = "") -> tuple[str, str]:
     api_key = (api_key or "").strip()
     info = resolve_provider("xai", api_key, base_url)
-    key = info.get("api_key", "")
-    if not key or key == "xai_oauth":
-        key = get_oauth_token("xai") or key
-    return key, normalize_base_url(info.get("base_url", "https://api.x.ai/v1/"))
+    key, resolved_base_url, _ = resolve_oauth_marker(
+        info.get("api_key", ""),
+        "xai",
+        info.get("base_url", ""),
+        "",
+    )
+    return key, normalize_base_url(resolved_base_url or "https://api.x.ai/v1/")
 
 
 def xai_image(prompt: str, model: str, aspect_ratio: str, resolution: str, api_key: str, base_url: str, image_tensors=None, seed: int = None, status_updater=None):
@@ -112,8 +115,6 @@ def xai_image(prompt: str, model: str, aspect_ratio: str, resolution: str, api_k
     tensors = [t for t in (image_tensors or []) if t is not None]
     url = base + ("images/edits" if tensors else "images/generations")
     payload = {"model": model, "prompt": prompt, "n": 1, "response_format": "url", "aspect_ratio": aspect_ratio, "resolution": resolution}
-    if seed is not None:
-        payload["seed"] = seed
     if tensors:
         images = []
         total_imgs = len(tensors)
@@ -204,7 +205,7 @@ def submit_video(payload: dict, endpoint: str, api_key: str, base_url: str, stat
 
 
 def xai_video(prompt: str, model: str, aspect_ratio: str, resolution: str, duration: int, seed: int, api_key: str, base_url: str, image=None, status_updater=None):
-    payload = {"model": model, "prompt": prompt, "duration": duration, "resolution": resolution, "seed": seed}
+    payload = {"model": model, "prompt": prompt, "duration": duration, "resolution": resolution}
     if aspect_ratio != "auto":
         payload["aspect_ratio"] = aspect_ratio
     if image is not None:
@@ -239,7 +240,7 @@ def xai_video_reference(prompt: str, model: str, aspect_ratio: str, resolution: 
         refs.append({"url": tensor_to_data_uri(img)})
     if not refs:
         raise RuntimeError("Reference video generation requires at least one image.")
-    payload = {"model": model, "prompt": prompt, "duration": duration, "resolution": resolution, "seed": seed, "reference_images": refs}
+    payload = {"model": model, "prompt": prompt, "duration": duration, "resolution": resolution, "reference_images": refs}
     if aspect_ratio != "auto":
         payload["aspect_ratio"] = aspect_ratio
     if status_updater:
@@ -265,7 +266,6 @@ def xai_video_edit(prompt: str, model: str, video, seed: int, api_key: str, base
             "model": model,
             "video": {"file_id": file_id},
             "prompt": prompt,
-            "seed": seed
         }
         if status_updater:
             status_updater.update_status("Generating")
@@ -285,6 +285,7 @@ def xai_video_edit(prompt: str, model: str, video, seed: int, api_key: str, base
     finally:
         if file_id:
             delete_xai_file(file_id, key, base)
+        cleanup_upload_temp_file(path)
 
 
 def xai_video_extend(prompt: str, model: str, video, duration: int, seed: int, api_key: str, base_url: str, status_updater=None):
@@ -325,3 +326,4 @@ def xai_video_extend(prompt: str, model: str, video, duration: int, seed: int, a
     finally:
         if file_id:
             delete_xai_file(file_id, key, base)
+        cleanup_upload_temp_file(path)

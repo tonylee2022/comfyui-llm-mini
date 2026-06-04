@@ -12,7 +12,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import requests
 
-from .config import load_ini, save_ini
+from .config import config_lock, load_ini, save_ini
+
+_TOKEN_REFRESH_LOCK = threading.RLock()
 
 DEFAULT_CREDENTIALS = {
     "codex": {
@@ -192,23 +194,31 @@ def generate_pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
-def write_tokens(provider: str, client_id: str, client_secret: str, token_data: dict, token_url: str) -> None:
-    config = load_ini()
-    section = f"{provider}_oauth"
-    if not config.has_section(section):
-        config.add_section(section)
-    config[section]["client_id"] = client_id
-    config[section]["client_secret"] = client_secret
-    config[section]["access_token"] = token_data.get("access_token") or token_data.get("accessToken") or ""
-    config[section]["refresh_token"] = token_data.get("refresh_token") or token_data.get("refreshToken") or ""
-    expires = token_data.get("expires_in") or token_data.get("expiresIn") or 3600
-    try:
-        expires = int(expires)
-    except ValueError:
-        expires = 3600
-    config[section]["token_expires_at"] = str(int(time.time() + expires))
-    config[section]["token_url"] = token_url
-    save_ini(config)
+def write_tokens(
+    provider: str,
+    client_id: str,
+    client_secret: str,
+    token_data: dict,
+    token_url: str,
+    fallback_refresh_token: str = "",
+) -> None:
+    with config_lock():
+        config = load_ini()
+        section = f"{provider}_oauth"
+        if not config.has_section(section):
+            config.add_section(section)
+        config[section]["client_id"] = client_id
+        config[section]["client_secret"] = client_secret
+        config[section]["access_token"] = token_data.get("access_token") or token_data.get("accessToken") or ""
+        config[section]["refresh_token"] = token_data.get("refresh_token") or token_data.get("refreshToken") or fallback_refresh_token
+        expires = token_data.get("expires_in") or token_data.get("expiresIn") or 3600
+        try:
+            expires = int(expires)
+        except (TypeError, ValueError):
+            expires = 3600
+        config[section]["token_expires_at"] = str(int(time.time() + expires))
+        config[section]["token_url"] = token_url
+        save_ini(config)
 
 
 def refresh_oauth_token(provider: str) -> str | None:
@@ -230,25 +240,35 @@ def refresh_oauth_token(provider: str) -> str | None:
         print(f"[LLM Mini] OAuth refresh failed for {provider}: HTTP {response.status_code} {response.text}")
         return None
     token_data = response.json()
-    write_tokens(provider, client_id, client_secret, token_data, token_url)
-    return token_data.get("access_token") or token_data.get("accessToken")
+    access_token = token_data.get("access_token") or token_data.get("accessToken")
+    if not access_token:
+        print(f"[LLM Mini] OAuth refresh failed for {provider}: response did not include access_token")
+        return None
+    write_tokens(provider, client_id, client_secret, token_data, token_url, fallback_refresh_token=refresh_token)
+    return access_token
 
 
-def get_oauth_token(provider: str, refresh_margin: int = 86400) -> str | None:
-    config = load_ini()
-    section = f"{provider}_oauth"
-    if not config.has_section(section):
-        return None
-    token = config.get(section, "access_token", fallback="")
-    try:
-        expires_at = int(config.get(section, "token_expires_at", fallback="0"))
-    except ValueError:
-        expires_at = 0
-    if not token:
-        return None
-    if time.time() > expires_at - refresh_margin:
-        return refresh_oauth_token(provider) or token
-    return token
+def get_oauth_token(provider: str, refresh_margin: int = 300) -> str | None:
+    with _TOKEN_REFRESH_LOCK:
+        config = load_ini()
+        section = f"{provider}_oauth"
+        if not config.has_section(section):
+            return None
+        token = config.get(section, "access_token", fallback="")
+        try:
+            expires_at = int(config.get(section, "token_expires_at", fallback="0"))
+        except ValueError:
+            expires_at = 0
+        if not token:
+            return None
+        now = time.time()
+        if expires_at > 0 and now > expires_at - refresh_margin:
+            refreshed_token = refresh_oauth_token(provider)
+            if refreshed_token:
+                return refreshed_token
+            if now >= expires_at:
+                return None
+        return token
 
 
 def resolve_oauth_marker(api_key: str, provider_hint: str, base_url: str, model_name: str) -> tuple[str, str, str]:
@@ -270,6 +290,8 @@ def resolve_oauth_marker(api_key: str, provider_hint: str, base_url: str, model_
                 base_url = "https://api.x.ai/v1/"
             elif provider == "codex" and not base_url:
                 base_url = "https://chatgpt.com/backend-api/"
+        else:
+            api_key = ""
     return api_key, base_url, provider
 
 

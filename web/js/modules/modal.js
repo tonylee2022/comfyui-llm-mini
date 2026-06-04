@@ -237,10 +237,14 @@ export function showModelSelectionModal(provider, models, currentlyConfiguredMod
   // Title section
   const header = document.createElement("div");
   header.className = "llm-mini-modal-header";
-  header.innerHTML = `
-    <h3 class="llm-mini-modal-title">${t("Choose Static Default Models", "选择静态默认模型")} (${provider})</h3>
-    <button class="llm-mini-modal-close">&times;</button>
-  `;
+  const title = document.createElement("h3");
+  title.className = "llm-mini-modal-title";
+  title.textContent = `${t("Choose Static Default Models", "选择静态默认模型")} (${provider})`;
+  header.appendChild(title);
+  const closeButton = document.createElement("button");
+  closeButton.className = "llm-mini-modal-close";
+  closeButton.textContent = "×";
+  header.appendChild(closeButton);
   modal.appendChild(header);
 
   // Toolbar (Search + Select All)

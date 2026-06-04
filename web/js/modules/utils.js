@@ -1,5 +1,4 @@
 import { api } from "../../../../scripts/api.js";
-import { showModelSelectionModal } from "./modal.js";
 
 export function currentLocale() {
   return localStorage["AGL.Locale"] || 
@@ -12,9 +11,7 @@ export function currentLocale() {
 
 export function isChineseLocale() {
   const locale = currentLocale();
-  const result = locale.toLowerCase().startsWith("zh");
-  console.log("[LLM Mini] isChineseLocale check. Detected locale:", locale, "Result:", result);
-  return result;
+  return locale.toLowerCase().startsWith("zh");
 }
 
 export function t(en, zh) {
@@ -32,7 +29,7 @@ export function widgetValue(node, name) {
 
 export function updateCombo(node, name, values) {
   const widget = findWidget(node, name);
-  if (!widget || !values || !values.length) return false;
+  if (!widget || !Array.isArray(values)) return false;
   widget.type = "combo";
   
   widget.options = widget.options || {};
@@ -47,7 +44,7 @@ export function updateCombo(node, name, values) {
   
   const oldValue = widget.value;
   if (!values.includes(widget.value)) {
-    widget.value = values[0];
+    widget.value = values[0] || "";
   }
   if (widget.callback && widget.value !== oldValue) {
     widget.callback(widget.value);
@@ -80,75 +77,26 @@ export function updateCredentialSourcesAndModels(node, providers) {
 
 export async function refreshProviderWidgets(node) {
   try {
-    const providers = await fetchProviderInfo();
+    const providers = (await fetchProviderInfo()).filter((item) => item.chat_available);
     const providerIds = providers.map((item) => item.id).filter(Boolean);
     updateCombo(node, "provider", providerIds);
-    updateCredentialSourcesAndModels(node, providers);
+    if (providerIds.length) {
+      updateCredentialSourcesAndModels(node, providers);
+    } else {
+      updateCombo(node, "model_name", []);
+    }
     const providerWidget = findWidget(node, "provider");
     if (providerWidget) {
-      const originalCallback = providerWidget.callback;
-      providerWidget.callback = function () {
-        if (originalCallback) originalCallback.apply(this, arguments);
-        updateCredentialSourcesAndModels(node, providers);
-      };
+      providerWidget.__llmMiniProviders = providers;
+      if (!Object.prototype.hasOwnProperty.call(providerWidget, "__llmMiniOriginalCallback")) {
+        providerWidget.__llmMiniOriginalCallback = providerWidget.callback;
+        providerWidget.callback = function () {
+          if (this.__llmMiniOriginalCallback) this.__llmMiniOriginalCallback.apply(this, arguments);
+          updateCredentialSourcesAndModels(node, this.__llmMiniProviders || []);
+        };
+      }
     }
   } catch (error) {
     console.warn("LLM Mini provider refresh failed:", error);
   }
-}
-
-export function removeRefreshButtons(node) {
-  if (!node.widgets) return;
-  for (let i = node.widgets.length - 1; i >= 0; i--) {
-    const w = node.widgets[i];
-    if (w.type === "button" && (w.name === "Refresh Models" || w.name === "刷新模型")) node.widgets.splice(i, 1);
-  }
-}
-
-export function addRefreshButton(node) {
-  removeRefreshButtons(node);
-  const label = t("Refresh Models", "刷新模型");
-  console.log("[LLM Mini] addRefreshButton called for node:", node.title || node.name);
-  node.addWidget("button", label, label, async () => {
-    console.log("[LLM Mini] Refresh Models button clicked! Node:", node);
-    const provider = widgetValue(node, "provider") || "openai";
-    console.log("[LLM Mini] Selected provider:", provider);
-    try {
-      const response = await api.fetchApi("/llm-mini/models", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider }),
-      });
-      const data = await response.json();
-      console.log("[LLM Mini] Received models from server:", data);
-      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-      if (!data.models || data.models.length === 0) throw new Error(t("No models returned.", "没有返回可用模型。"));
-      
-      if (!data.has_credentials && provider !== "ollama") {
-        alert(t("Models loaded from defaults. Add credentials to fetch live provider models.", "已加载默认模型。请添加凭据以获取实时模型列表。"));
-      }
-      
-      const modelWidget = findWidget(node, "model_name");
-      const currentlyConfigured = modelWidget && modelWidget.options && modelWidget.options.values ? [...modelWidget.options.values] : [];
-
-      // 打开精美的多选选择框
-      showModelSelectionModal(
-        provider,
-        data.models,
-        currentlyConfigured,
-        // onSave (保存为静态配置并更新当前界面)
-        (selectedList) => {
-          updateCombo(node, "model_name", selectedList);
-        },
-        // onApply (仅临时更新当前界面)
-        (selectedList) => {
-          updateCombo(node, "model_name", selectedList);
-        }
-      );
-    } catch (error) {
-      console.error("[LLM Mini] Refresh models failed:", error);
-      alert(`LLM Mini: ${error.message}`);
-    }
-  });
-  node.setSize(node.computeSize());
 }

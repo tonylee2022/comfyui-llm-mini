@@ -3,8 +3,18 @@ from __future__ import annotations
 import base64
 import io
 import os
-import time
+import threading
 from pathlib import Path
+from uuid import uuid4
+
+
+_OWNED_UPLOAD_TEMP_FILES: set[str] = set()
+_OWNED_UPLOAD_TEMP_LOCK = threading.RLock()
+
+
+def _register_upload_temp_file(path: Path) -> None:
+    with _OWNED_UPLOAD_TEMP_LOCK:
+        _OWNED_UPLOAD_TEMP_FILES.add(str(path.resolve()))
 
 
 def tensor_to_data_uri(image_tensor) -> str:
@@ -65,7 +75,6 @@ def downscale_image_tensor(image_tensor, max_pixels: int = 2048 * 2048):
 def transcode_to_h264_mp4(input_path: str) -> str:
     import subprocess
     import tempfile
-    import time
     from pathlib import Path
 
     # 只要是 mp4 格式，直接返回，免去任何转码逻辑
@@ -113,7 +122,8 @@ def transcode_to_h264_mp4(input_path: str) -> str:
         out_dir = Path(tempfile.gettempdir())
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    output_path = out_dir / f"llm-mini-video-transcoded-{int(time.time())}.mp4"
+    output_path = out_dir / f"llm-mini-video-transcoded-{uuid4().hex}.mp4"
+    _register_upload_temp_file(output_path)
 
     # ffmpeg 重新转码为标准 H.264 MP4 格式，去除 "-r 25" 以保持原视频帧率，避免 PTS 错误导致 API 报错
     cmd = [
@@ -134,6 +144,7 @@ def transcode_to_h264_mp4(input_path: str) -> str:
         return str(output_path)
     except Exception as e:
         print(f"[LLM Mini] ffmpeg transcoding failed, falling back to original: {e}")
+        cleanup_upload_temp_file(str(output_path))
         return input_path
 
 
@@ -145,13 +156,15 @@ def get_video_path_from_input(video_input) -> str | None:
 
     # 优先尝试使用 save_to 方法
     if hasattr(video_input, "save_to"):
+        path = None
         try:
             import folder_paths
             from io import BytesIO
 
             out_dir = Path(folder_paths.get_temp_directory())
             out_dir.mkdir(parents=True, exist_ok=True)
-            path = out_dir / f"llm-mini-video-input-{int(time.time())}.mp4"
+            path = out_dir / f"llm-mini-video-input-{uuid4().hex}.mp4"
+            _register_upload_temp_file(path)
 
             try:
                 from comfy_api.latest import Types
@@ -169,6 +182,7 @@ def get_video_path_from_input(video_input) -> str | None:
                 f.write(video_bytes_io.read())
             raw_path = str(path)
         except Exception as e:
+            cleanup_upload_temp_file(str(path) if path else None)
             print(f"[LLM Mini] Failed to save video via save_to: {e}")
 
     # 尝试 get_stream_source 方法
@@ -177,17 +191,19 @@ def get_video_path_from_input(video_input) -> str | None:
         if isinstance(source, str):
             raw_path = source
         elif hasattr(source, "read"):
+            path = None
             try:
                 source.seek(0)
                 import folder_paths
 
                 out_dir = Path(folder_paths.get_temp_directory())
                 out_dir.mkdir(parents=True, exist_ok=True)
-                path = out_dir / f"llm-mini-video-input-{int(time.time())}.mp4"
+                path = out_dir / f"llm-mini-video-input-{uuid4().hex}.mp4"
+                _register_upload_temp_file(path)
                 path.write_bytes(source.read())
                 raw_path = str(path)
             except Exception:
-                pass
+                cleanup_upload_temp_file(str(path) if path else None)
 
     # 尝试字典配置格式 (如从 Load Video 节点传入)
     if not raw_path and isinstance(video_input, dict) and video_input.get("video"):
@@ -213,6 +229,21 @@ def get_video_path_from_input(video_input) -> str | None:
     return raw_path
 
 
+def cleanup_upload_temp_file(path: str | None) -> None:
+    if not path:
+        return
+    candidate = Path(path)
+    resolved = str(candidate.resolve())
+    with _OWNED_UPLOAD_TEMP_LOCK:
+        if resolved not in _OWNED_UPLOAD_TEMP_FILES:
+            return
+        _OWNED_UPLOAD_TEMP_FILES.remove(resolved)
+    try:
+        candidate.unlink(missing_ok=True)
+    except OSError as exc:
+        print(f"[LLM Mini] Failed to remove upload temp file {candidate}: {exc}")
+
+
 def download_video_to_comfy(url: str):
     import requests
 
@@ -227,7 +258,7 @@ def download_video_to_comfy(url: str):
         out_dir = Path(__file__).resolve().parents[1] / "video_temp"
         folder_type = "temp"
     out_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"llm-mini-video-{int(time.time())}.mp4"
+    filename = f"llm-mini-video-{uuid4().hex}.mp4"
     path = out_dir / filename
     path.write_bytes(response.content)
     try:

@@ -24,16 +24,61 @@ def _tensor_png_file(image_tensor, name: str = "image.png"):
     return name, buf, "image/png"
 
 
-def _codex_image(api_key: str, model: str, prompt: str, size: str, image_tensors: list):
+def _tensor_mask_png_file(image_tensor, mask, name: str = "mask.png"):
+    import numpy as np
+    import torch
+    from PIL import Image
+
+    scaled = downscale_image_tensor(image_tensor)
+    rgb = scaled[0].detach().cpu().numpy()
+    mask_tensor = mask.detach().float().cpu() if hasattr(mask, "detach") else torch.as_tensor(mask, dtype=torch.float32)
+    if len(mask_tensor.shape) == 4:
+        mask_tensor = mask_tensor[0, :, :, 0]
+    elif len(mask_tensor.shape) == 3:
+        mask_tensor = mask_tensor[0]
+    elif len(mask_tensor.shape) != 2:
+        raise ValueError("OpenAI image edit mask must be a 2D mask or a batched mask.")
+    mask_tensor = mask_tensor.unsqueeze(0).unsqueeze(0)
+    mask_tensor = torch.nn.functional.interpolate(mask_tensor, size=rgb.shape[:2], mode="bilinear", align_corners=False)[0, 0]
+    alpha = 1.0 - mask_tensor.clamp(0, 1).numpy()
+    rgba = np.concatenate([rgb[:, :, :3], alpha[:, :, None]], axis=2)
+    img = Image.fromarray((np.clip(rgba, 0, 1) * 255).astype("uint8"), mode="RGBA")
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return name, buf, "image/png"
+
+
+def _image_source(value: str) -> str:
+    if value.startswith("http") or value.startswith("data:image"):
+        return value
+    return "data:image/png;base64," + value
+
+
+def _image_sources_to_batch(values: list[str]):
+    import torch
+
+    sources = [_image_source(value) for value in values]
+    tensors = [image_source_to_tensor(source) for source in sources]
+    return torch.cat(tensors, dim=0), sources
+
+
+def _codex_image(api_key: str, model: str, prompt: str, size: str, quality: str, background: str, image_tensors: list):
     from ..core.media import tensor_to_data_uri
 
+    if not model or model.startswith("gpt-image-"):
+        model = "gpt-5.5"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "Accept": "text/event-stream"}
     content = [{"type": "input_text", "text": f"Use the image_generation tool to render: {prompt}. Output format: png."}]
     content = [{"type": "input_image", "image_url": tensor_to_data_uri(t)} for t in image_tensors] + content
     tool = {"type": "image_generation", "output_format": "png"}
     if size != "auto":
         tool["size"] = size
-    payload = {"model": "gpt-5.5", "stream": True, "instructions": "You are an image generation assistant.", "input": [{"type": "message", "role": "user", "content": content}], "tools": [tool], "tool_choice": "auto", "store": False}
+    if quality != "auto":
+        tool["quality"] = quality
+    if background != "auto":
+        tool["background"] = background
+    payload = {"model": model, "stream": True, "instructions": "You are an image generation assistant.", "input": [{"type": "message", "role": "user", "content": content}], "tools": [tool], "tool_choice": "auto", "store": False}
     url = "https://chatgpt.com/backend-api/codex/responses"
     response = requests.post(url, json=payload, headers=headers, stream=True, timeout=180)
     log_http_response("POST", url, response)
@@ -59,15 +104,15 @@ def _codex_image(api_key: str, model: str, prompt: str, size: str, image_tensors
                 images.append(item["result"])
     if not images:
         raise RuntimeError("Codex image response did not contain image data.")
-    data_uri = images[0] if images[0].startswith("data:image") else "data:image/png;base64," + images[0]
-    return image_source_to_tensor(data_uri), data_uri
+    tensor_batch, sources = _image_sources_to_batch(images)
+    return tensor_batch, sources[0]
 
 
-def codex_image(prompt: str, model: str, size: str, image_tensors=None):
+def codex_image(prompt: str, model: str, size: str, quality: str, background: str, image_tensors=None):
     api_key, _, _ = resolve_oauth_marker("codex_oauth", "codex", "", model)
     if not api_key:
         raise RuntimeError("No Codex OAuth token found.")
-    return _codex_image(api_key, model, prompt, size, image_tensors or [])
+    return _codex_image(api_key, model, prompt, size, quality, background, image_tensors or [])
 
 
 def openai_image(prompt: str, model: str, size: str, quality: str, background: str, n: int, seed: int, image_tensors=None, mask=None, status_updater=None):
@@ -83,29 +128,31 @@ def openai_image(prompt: str, model: str, size: str, quality: str, background: s
         base_url += "/"
     headers = {"Authorization": f"Bearer {api_key}"}
     if image_tensors:
-        data = {"model": model, "prompt": prompt, "n": str(n), "size": size, "quality": quality, "background": background, "seed": str(seed), "response_format": "url"}
+        data = {"model": model, "prompt": prompt, "n": str(n), "size": size, "quality": quality, "background": background}
         files = []
         total_imgs = len(image_tensors)
         for i, t in enumerate(image_tensors):
             if status_updater:
                 status_updater.update_status(f"Uploading image {i + 1}/{total_imgs}")
             files.append(("image" if total_imgs == 1 else "image[]", _tensor_png_file(t, f"image_{i}.png")))
+        if mask is not None:
+            files.append(("mask", _tensor_mask_png_file(image_tensors[0], mask)))
         if status_updater:
             status_updater.update_status("Generating")
         url = base_url + "images/edits"
         response = requests.post(url, headers=headers, data=data, files=files, timeout=120)
     else:
-        payload = {"model": model, "prompt": prompt, "n": n, "size": size, "quality": quality, "background": background, "seed": seed, "response_format": "url"}
+        payload = {"model": model, "prompt": prompt, "n": n, "size": size, "quality": quality, "background": background}
         url = base_url + "images/generations"
         response = requests.post(url, headers=headers, json=payload, timeout=120)
     log_http_response("POST", url, response)
     if response.status_code != 200:
         raise RuntimeError(f"OpenAI image error HTTP {response.status_code}: {response.text}")
-    urls = [item.get("url") or item.get("b64_json") for item in response.json().get("data", []) if item.get("url") or item.get("b64_json")]
-    if not urls:
+    values = [item.get("url") or item.get("b64_json") for item in response.json().get("data", []) if item.get("url") or item.get("b64_json")]
+    if not values:
         raise RuntimeError("Image response did not contain image data.")
-    source = urls[0] if urls[0].startswith("http") or urls[0].startswith("data:image") else "data:image/png;base64," + urls[0]
-    return image_source_to_tensor(source), source
+    tensor_batch, sources = _image_sources_to_batch(values)
+    return tensor_batch, sources[0]
 
 
 def google_imagen_generate(prompt: str, model: str, aspect_ratio: str, resolution: str, quality: str, seed: int, api_key: str, base_url: str = "", n: int = 1):
@@ -359,4 +406,3 @@ def google_gemini_image_generate(
         final_image = torch.zeros((1, 1024, 1024, 3), dtype=torch.float32)
 
     return final_image, text_res
-

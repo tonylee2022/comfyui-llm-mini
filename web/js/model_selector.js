@@ -1,9 +1,17 @@
 import { app } from "../../../scripts/app.js";
 import { TARGET_NODES, setupNodeByType } from "./modules/node_setup.js";
-import { applyLocalization } from "./modules/localization.js";
+import { localizeVueNodeDef, scheduleLocalization } from "./modules/localization.js";
 
 app.registerExtension({
   name: "ComfyUI.LLMMini.ModelSelector",
+  beforeRegisterVueAppNodeDefs(nodeDefs) {
+    for (const nodeDef of nodeDefs) {
+      if (nodeDef && TARGET_NODES.has(nodeDef.name)) {
+        localizeVueNodeDef(nodeDef);
+      }
+    }
+  },
+
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (!TARGET_NODES.has(nodeData.name)) return;
     
@@ -18,67 +26,38 @@ app.registerExtension({
     const originalConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function () {
       const result = originalConfigure ? originalConfigure.apply(this, arguments) : undefined;
-      applyLocalization(this);
-      // 针对 Nodes 2.0 异步渲染，使用延时再次确保翻译生效
-      setTimeout(() => {
-        applyLocalization(this);
-        if (app.canvas) {
-          app.canvas.setDirty(true, true);
-        }
-      }, 50);
+      scheduleLocalization(this, 50);
       return result;
     };
 
-    // 终极保底：在每次节点渲染时，确保应用最新的本地化翻译（以防 ComfyUI 动态修改端口）
-    const originalDrawForeground = nodeType.prototype.onDrawForeground;
-    nodeType.prototype.onDrawForeground = function (ctx, canvas) {
-      applyLocalization(this);
-      if (originalDrawForeground) {
-        return originalDrawForeground.apply(this, arguments);
-      }
+    const originalInputAdded = nodeType.prototype.onInputAdded;
+    nodeType.prototype.onInputAdded = function () {
+      const result = originalInputAdded ? originalInputAdded.apply(this, arguments) : undefined;
+      scheduleLocalization(this);
+      return result;
     };
   },
   
   // 扩展生命周期钩子：当任何节点被创建并添加到图表中时调用
   nodeCreated(node) {
     if (TARGET_NODES.has(node.comfyClass)) {
-      const triggerUpdate = (n) => {
-        applyLocalization(n);
-        if (app.canvas) {
-          app.canvas.setDirty(true, true);
-          if (typeof app.canvas.draw === "function") {
-            app.canvas.draw(true, true);
-          }
-        }
-      };
-      triggerUpdate(node);
-      setTimeout(() => triggerUpdate(node), 50);
-      setTimeout(() => triggerUpdate(node), 150);
-      setTimeout(() => triggerUpdate(node), 350);
-      setTimeout(() => triggerUpdate(node), 800);
+      scheduleLocalization(node, 50);
     }
   },
 
-  // 扩展生命周期钩子：当整个工作流数据被反序列化并载入配置完成后调用（例如重新加载/刷新页面）
-  afterConfigure() {
+  // Nodes 2.0 synchronizes slots while loading a workflow, then invokes this hook.
+  loadedGraphNode(node) {
+    if (TARGET_NODES.has(node.comfyClass)) {
+      scheduleLocalization(node);
+    }
+  },
+
+  // Apply once more after all workflow nodes and slots have finished loading.
+  afterConfigureGraph() {
     if (app.graph && app.graph._nodes) {
       for (const node of app.graph._nodes) {
         if (node && TARGET_NODES.has(node.comfyClass)) {
-          const triggerUpdate = (n) => {
-            applyLocalization(n);
-            if (app.canvas) {
-              app.canvas.setDirty(true, true);
-              if (typeof app.canvas.draw === "function") {
-                app.canvas.draw(true, true);
-              }
-            }
-          };
-          triggerUpdate(node);
-          setTimeout(() => triggerUpdate(node), 100);
-          setTimeout(() => triggerUpdate(node), 300);
-          setTimeout(() => triggerUpdate(node), 600);
-          setTimeout(() => triggerUpdate(node), 1200);
-          setTimeout(() => triggerUpdate(node), 2000);
+          scheduleLocalization(node, 100);
         }
       }
     }

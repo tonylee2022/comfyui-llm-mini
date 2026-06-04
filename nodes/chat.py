@@ -3,7 +3,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from comfy_api.latest import IO
-from ..core.config import provider_names, resolve_provider
+from ..core.config import chat_provider_names, resolve_provider
 from ..core.persona import load_persona_text
 from ..providers.openai_compatible import ApiChatClient
 from ..core.status import StatusUpdater, get_unique_id
@@ -16,7 +16,9 @@ def _chat_fingerprint(is_locked=True):
 class ApiChatNode(IO.ComfyNode):
     @classmethod
     def define_schema(cls):
-        providers = provider_names()
+        providers = chat_provider_names()
+        default_provider = providers[0] if providers else ""
+        default_models = (resolve_provider(default_provider).get("default_models") or [""]) if default_provider else [""]
         return IO.Schema(
             node_id="LLMMiniApiChat",
             display_name="API Chat",
@@ -34,13 +36,18 @@ class ApiChatNode(IO.ComfyNode):
                     optional=True,
                     tooltip="Optional reference images. Add image inputs dynamically as needed.",
                 ),
-                IO.Combo.Input("provider", options=providers, default=providers[0] if providers else ""),
-                IO.Combo.Input("model_name", options=["click Refresh Models"], default="click Refresh Models"),
+                IO.Combo.Input("provider", options=providers, default=default_provider),
+                IO.Combo.Input("model_name", options=default_models, default=default_models[0]),
                 IO.String.Input("system_prompt", multiline=True, default=""),
                 IO.String.Input("user_prompt", multiline=True, default=""),
                 IO.Float.Input("temperature", default=0.7, min=0.0, max=2.0, step=0.1),
                 IO.Int.Input("max_tokens", default=2048, min=1, max=128000, step=128),
                 IO.Boolean.Input("is_locked", default=True),
+                IO.Boolean.Input(
+                    "retain_images_in_history",
+                    default=False,
+                    tooltip="Keep Base64 image data in history_json. Disabled by default to avoid very large workflow data.",
+                ),
 
                 IO.Combo.Input("thinking_level", options=["auto", "disabled", "low", "medium", "high"], default="auto"),
                 IO.String.Input("image_url", optional=True),
@@ -64,7 +71,7 @@ class ApiChatNode(IO.ComfyNode):
         return _chat_fingerprint(is_locked)
 
     @classmethod
-    def execute(cls, system_prompt_input="", history_json="", images=None, provider=None, model_name=None, system_prompt="", user_prompt="", temperature=0.7, max_tokens=2048, is_locked=True, thinking_level="auto", image_url="", stream=False, unique_id=None):
+    def execute(cls, system_prompt_input="", history_json="", images=None, provider=None, model_name=None, system_prompt="", user_prompt="", temperature=0.7, max_tokens=2048, is_locked=True, retain_images_in_history=False, thinking_level="auto", image_url="", stream=False, unique_id=None):
         node_id = get_unique_id(cls, unique_id)
         try:
             with StatusUpdater(node_id, f"Chatting ({provider})"):
@@ -99,7 +106,8 @@ class ApiChatNode(IO.ComfyNode):
                     image=valid_images if valid_images else None,
                     image_url=image_url,
                     stream=stream,
-                    thinking_level=thinking_level
+                    thinking_level=thinking_level,
+                    retain_images_in_history=retain_images_in_history,
                 )
                 return (res[0], res[1])
         except Exception as exc:

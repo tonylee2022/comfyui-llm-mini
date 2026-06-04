@@ -21,6 +21,31 @@ def normalize_chat_kwargs(kwargs: dict) -> dict:
     return normalized
 
 
+def _history_without_base64_images(messages: list[dict]) -> list[dict]:
+    cleaned_messages = []
+    for message in messages:
+        cleaned = dict(message)
+        content = cleaned.get("content")
+        if isinstance(content, list):
+            cleaned_content = []
+            omitted = False
+            for item in content:
+                if item.get("type") != "image_url":
+                    cleaned_content.append(item)
+                    continue
+                image_url = item.get("image_url", {})
+                url = image_url.get("url", "") if isinstance(image_url, dict) else str(image_url or "")
+                if url.startswith("data:"):
+                    omitted = True
+                else:
+                    cleaned_content.append(item)
+            if omitted:
+                cleaned_content.append({"type": "text", "text": "[Base64 image omitted from history]"})
+            cleaned["content"] = cleaned_content
+        cleaned_messages.append(cleaned)
+    return cleaned_messages
+
+
 
 
 def _codex_messages(messages: list[dict]) -> tuple[str, list[dict]]:
@@ -82,7 +107,7 @@ def list_models(provider: str, api_key: str = "", base_url: str = "") -> list[st
     info = resolve_provider(provider, api_key, base_url)
     backend = info.get("backend", "openai_compatible")
     if backend == "anthropic":
-        return list_anthropic_models(info.get("api_key", ""), info.get("default_models", []))
+        return list_anthropic_models(info.get("api_key", ""), info.get("default_models", []), base_url=info.get("base_url", ""))
     if backend == "gemini":
         return list_gemini_models(info.get("api_key", ""), info.get("default_models", []), base_url=info.get("base_url", ""))
     api_key, base_url, oauth_provider = resolve_oauth_marker(info.get("api_key", ""), provider, info.get("base_url", ""), "")
@@ -120,7 +145,7 @@ class ApiChatClient:
     api_key: str
     base_url: str
 
-    def send(self, user_prompt: str, system_prompt: str, temperature: float, max_tokens: int, history_json: str = "", image=None, image_url: str = "", stream: bool = False, extra_parameters: dict | None = None, thinking_level: str = "auto") -> tuple[str, str, str]:
+    def send(self, user_prompt: str, system_prompt: str, temperature: float, max_tokens: int, history_json: str = "", image=None, image_url: str = "", stream: bool = False, extra_parameters: dict | None = None, thinking_level: str = "auto", retain_images_in_history: bool = False) -> tuple[str, str, str]:
         extra_parameters = (extra_parameters or {}).copy()
         if thinking_level and thinking_level != "auto":
             model_name_lower = self.model_name.lower()
@@ -179,7 +204,7 @@ class ApiChatClient:
         messages.append({"role": "user", "content": content})
         api_reasoning = ""
         if backend == "anthropic":
-            response_text = send_anthropic_chat(api_key, self.model_name, messages, temperature, max_tokens, stream, extra_parameters)
+            response_text = send_anthropic_chat(api_key, self.model_name, messages, temperature, max_tokens, stream, extra_parameters, base_url=base_url)
         elif backend == "gemini":
             response_text = send_gemini_sdk_chat(api_key, self.model_name, messages, temperature, max_tokens, extra_parameters, base_url=base_url)
         elif "chatgpt.com" in base_url or oauth_provider == "codex":
@@ -216,4 +241,5 @@ class ApiChatClient:
                 reasoning = match.group(1).strip()
                 response_text = response_text.replace(match.group(0), "").strip()
         messages.append({"role": "assistant", "content": response_text})
-        return response_text, json.dumps(messages, ensure_ascii=False, indent=2), reasoning
+        output_messages = messages if retain_images_in_history else _history_without_base64_images(messages)
+        return response_text, json.dumps(output_messages, ensure_ascii=False, indent=2), reasoning

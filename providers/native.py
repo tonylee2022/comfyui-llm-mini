@@ -68,13 +68,13 @@ def _split_system(messages: list[dict]) -> tuple[str, list[dict]]:
     return "", messages
 
 
-def list_anthropic_models(api_key: str, defaults: list[str]) -> list[str]:
+def list_anthropic_models(api_key: str, defaults: list[str], base_url: str = "") -> list[str]:
     if not api_key:
         return defaults
     try:
         from anthropic import Anthropic
 
-        client = Anthropic(api_key=api_key)
+        client = Anthropic(api_key=api_key, base_url=base_url or None)
         result = client.models.list()
         models = [model.id for model in result.data if getattr(model, "id", None)]
         merged = list(models)
@@ -87,7 +87,7 @@ def list_anthropic_models(api_key: str, defaults: list[str]) -> list[str]:
         return defaults
 
 
-def send_anthropic_chat(api_key: str, model: str, messages: list[dict], temperature: float, max_tokens: int, stream: bool, extra_parameters: dict) -> str:
+def send_anthropic_chat(api_key: str, model: str, messages: list[dict], temperature: float, max_tokens: int, stream: bool, extra_parameters: dict, base_url: str = "") -> str:
     if not api_key:
         raise RuntimeError("No Claude API key found for selected provider.")
     from anthropic import Anthropic
@@ -100,7 +100,7 @@ def send_anthropic_chat(api_key: str, model: str, messages: list[dict], temperat
             role = "user"
         converted.append({"role": role, "content": _anthropic_message_content(message.get("content", ""))})
 
-    client = Anthropic(api_key=api_key)
+    client = Anthropic(api_key=api_key, base_url=base_url or None)
     kwargs = {"model": model, "messages": converted, "max_tokens": max_tokens, "temperature": temperature, **extra_parameters}
     if system:
         kwargs["system"] = system
