@@ -32,19 +32,33 @@
       "0": { "name": "系统提示词输入" }
     }
   },
-  "LLMMiniOpenAICodexImage": {
-    "display_name": "OpenAI/Codex 图像",
+  "LLMMiniOpenAIImage": {
+    "display_name": "OpenAI 图像",
     "inputs": {
       "prompt": { "name": "提示词" },
-      "execution_backend": { "name": "执行后端" },
-      "model_name": { "name": "模型", "tooltip": "OpenAI 使用 GPT Image 模型；Codex 使用 Responses API 主模型，旧的 gpt-image-* 值会回退为 gpt-5.5。" },
+      "model_name": { "name": "图像模型", "tooltip": "OpenAI 直连图像生成和编辑使用的 GPT Image 模型。" },
       "size": { "name": "尺寸" },
       "quality": { "name": "质量" },
       "background": { "name": "背景" },
-      "n": { "name": "数量", "tooltip": "OpenAI 的生成数量；Codex 的输出数量由服务控制。" },
-      "seed": { "name": "随机种", "tooltip": "仅用于缓存和重新执行控制，不会发送给 OpenAI 或 Codex。" },
+      "n": { "name": "数量", "tooltip": "生成图像数量。" },
+      "seed": { "name": "随机种", "tooltip": "仅用于缓存和重新执行控制，不会发送给 OpenAI。" },
       "images": { "name": "参考图像", "tooltip": "可选参考图。连接后会自动增加新的图像输入。" },
-      "mask": { "name": "遮罩", "tooltip": "OpenAI 图像编辑遮罩，值为 1 的区域会被编辑；Codex 不使用。" }
+      "mask": { "name": "遮罩", "tooltip": "OpenAI 图像编辑遮罩，值为 1 的区域会被编辑。" }
+    },
+    "outputs": {
+      "0": { "name": "图像" }
+    }
+  },
+  "LLMMiniCodexImage": {
+    "display_name": "Codex 图像",
+    "inputs": {
+      "prompt": { "name": "提示词" },
+      "model_name": { "name": "图像模型", "tooltip": "Codex image_generation 工具调用使用的 GPT Image 模型；Codex 内部固定使用 gpt-5.5 作为 Responses 主模型。" },
+      "size": { "name": "尺寸" },
+      "quality": { "name": "质量" },
+      "background": { "name": "背景" },
+      "seed": { "name": "随机种", "tooltip": "仅用于缓存和重新执行控制，不会发送给 Codex。" },
+      "images": { "name": "参考图像", "tooltip": "可选参考图。连接后会自动增加新的图像输入。" }
     },
     "outputs": {
       "0": { "name": "图像" }
@@ -55,10 +69,27 @@
     "inputs": {
       "prompt": { "name": "提示词" },
       "model_name": { "name": "模型" },
-      "aspect_ratio": { "name": "宽高比" },
+      "aspect_ratio": { "name": "宽高比", "tooltip": "支持 auto、1:1、16:9、9:16、4:3、3:4、3:2、2:3、2:1、1:2、19.5:9、9:19.5、20:9、9:20。" },
       "resolution": { "name": "分辨率" },
+      "mime_type": { "name": "输出格式", "tooltip": "生成图像的 MIME 类型，默认 image/png。" },
+      "n": { "name": "数量", "tooltip": "生成图像数量，范围 1-10。" },
+      "seed": { "name": "随机种", "tooltip": "仅用于缓存和重新执行控制，不会发送给 xAI。" }
+    },
+    "outputs": {
+      "0": { "name": "图像" }
+    }
+  },
+  "LLMMiniXAIImageEdit": {
+    "display_name": "xAI 图像编辑",
+    "inputs": {
+      "prompt": { "name": "提示词" },
+      "model_name": { "name": "模型" },
+      "aspect_ratio": { "name": "宽高比", "tooltip": "支持 auto、1:1、16:9、9:16、4:3、3:4、3:2、2:3、2:1、1:2、19.5:9、9:19.5、20:9、9:20。" },
+      "resolution": { "name": "分辨率" },
+      "mime_type": { "name": "输出格式", "tooltip": "生成图像的 MIME 类型，默认 image/png。" },
+      "n": { "name": "数量", "tooltip": "生成图像数量，范围 1-10。" },
       "seed": { "name": "随机种", "tooltip": "仅用于缓存和重新执行控制，不会发送给 xAI。" },
-      "images": { "name": "参考图像", "tooltip": "可选参考图。连接后会自动增加新的图像输入。" }
+      "images": { "name": "源图像", "tooltip": "图像编辑源图，至少 1 张，最多 3 张。" }
     },
     "outputs": {
       "0": { "name": "图像" }
@@ -80,7 +111,7 @@
     }
   },
   "LLMMiniXAIVideoReference": {
-    "display_name": "xAI 多参考图视频",
+    "display_name": "xAI 视频参考",
     "inputs": {
       "prompt": { "name": "提示词" },
       "model_name": { "name": "模型" },
@@ -107,7 +138,7 @@
     }
   },
   "LLMMiniXAIVideoExtend": {
-    "display_name": "xAI 视频延长",
+    "display_name": "xAI 视频扩展",
     "inputs": {
       "prompt": { "name": "提示词" },
       "model_name": { "name": "模型" },

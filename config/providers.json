@@ -55,7 +55,7 @@
     "env_key_names": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
     "default_models": [],
     "supports_chat": true,
-    "supports_image": false,
+    "supports_image": true,
     "supports_video": false,
     "backend": "gemini"
   },

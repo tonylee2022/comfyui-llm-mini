@@ -1,38 +1,24 @@
 from .chat import ApiChatNode, PersonaNode, PersonaManagerNode
-from .image import OpenAICodexImageNode, XAIImagineNode, GoogleImagenNode, GoogleGeminiNanoBananaNode, GoogleGeminiNanoBananaProNode, GoogleGeminiNanoBanana2Node
-from .video import XAIVideoEditNode, XAIVideoExtendNode, XAIVideoNode, XAIVideoReferenceNode
+from .image import NODE_CLASS_MAPPINGS as IMAGE_NODE_CLASS_MAPPINGS
+from .image import NODE_DISPLAY_NAME_MAPPINGS as IMAGE_NODE_DISPLAY_NAME_MAPPINGS
 from .manager import LLMMiniProviderManager
+from .video import NODE_CLASS_MAPPINGS as VIDEO_NODE_CLASS_MAPPINGS
+from .video import NODE_DISPLAY_NAME_MAPPINGS as VIDEO_NODE_DISPLAY_NAME_MAPPINGS
 
 NODE_CLASS_MAPPINGS = {
     "LLMMiniApiChat": ApiChatNode,
     "LLMMiniLoadPersona": PersonaNode,
     "LLMMiniPersonaManager": PersonaManagerNode,
-    "LLMMiniOpenAICodexImage": OpenAICodexImageNode,
-    "LLMMiniXAIImagine": XAIImagineNode,
-    "LLMMiniGoogleImagen": GoogleImagenNode,
-    "LLMMiniGoogleGeminiNanoBanana": GoogleGeminiNanoBananaNode,
-    "LLMMiniGoogleGeminiNanoBananaPro": GoogleGeminiNanoBananaProNode,
-    "LLMMiniGoogleGeminiNanoBanana2": GoogleGeminiNanoBanana2Node,
-    "LLMMiniXAIVideo": XAIVideoNode,
-    "LLMMiniXAIVideoReference": XAIVideoReferenceNode,
-    "LLMMiniXAIVideoEdit": XAIVideoEditNode,
-    "LLMMiniXAIVideoExtend": XAIVideoExtendNode,
     "LLMMiniProviderManager": LLMMiniProviderManager,
 }
+NODE_CLASS_MAPPINGS.update(IMAGE_NODE_CLASS_MAPPINGS)
+NODE_CLASS_MAPPINGS.update(VIDEO_NODE_CLASS_MAPPINGS)
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "LLMMiniApiChat": "API Chat",
     "LLMMiniLoadPersona": "Load Persona",
     "LLMMiniPersonaManager": "Persona Manager",
-    "LLMMiniOpenAICodexImage": "OpenAI/Codex Image",
-    "LLMMiniXAIImagine": "xAI Imagine",
-    "LLMMiniGoogleImagen": "Google Imagen",
-    "LLMMiniGoogleGeminiNanoBanana": "Nano Banana",
-    "LLMMiniGoogleGeminiNanoBananaPro": "Nano Banana Pro",
-    "LLMMiniGoogleGeminiNanoBanana2": "Nano Banana 2",
-    "LLMMiniXAIVideo": "xAI Video",
-    "LLMMiniXAIVideoReference": "xAI Multi-Reference Video",
-    "LLMMiniXAIVideoEdit": "xAI Video Edit",
-    "LLMMiniXAIVideoExtend": "xAI Video Extend",
     "LLMMiniProviderManager": "Provider Manager",
 }
+NODE_DISPLAY_NAME_MAPPINGS.update(IMAGE_NODE_DISPLAY_NAME_MAPPINGS)
+NODE_DISPLAY_NAME_MAPPINGS.update(VIDEO_NODE_DISPLAY_NAME_MAPPINGS)

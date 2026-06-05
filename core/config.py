@@ -15,7 +15,8 @@ CONFIG_PATH = PACKAGE_DIR / "config.ini"
 PROVIDERS_PATH = PACKAGE_DIR / "config" / "providers.json"
 PERSONA_DIR = PACKAGE_DIR / "persona"
 TEMP_DIR = PACKAGE_DIR / "temp"
-PROVIDER_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+PROVIDER_ID_PATTERN = re.compile(r"^[^\W_][\w.-]{0,63}$", re.UNICODE)
+CHAT_BACKENDS = {"openai_compatible", "anthropic"}
 _CONFIG_LOCK = threading.RLock()
 
 # (credential source constants removed)
@@ -82,7 +83,7 @@ def config_lock():
 def validate_provider_id(provider_id: str) -> str:
     provider_id = str(provider_id or "").strip()
     if not PROVIDER_ID_PATTERN.fullmatch(provider_id):
-        raise ValueError("Provider ID must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$.")
+        raise ValueError("Provider ID must start with a Chinese character, letter, or number and contain only Chinese characters, letters, numbers, dots, underscores, or hyphens (maximum 64 characters).")
     return provider_id
 
 
@@ -132,9 +133,9 @@ def _merge_provider(provider_id: str, catalog: dict[str, dict[str, Any]], config
         "auth_type": config.get(section, "auth_type", fallback=existing.get("auth_type", "api_key")),
         "env_key_names": existing.get("env_key_names", []),
         "default_models": base_models,
-        "supports_chat": existing.get("supports_chat", True),
-        "supports_image": existing.get("supports_image", False),
-        "supports_video": existing.get("supports_video", False),
+        "supports_chat": _get_bool(config, section, "supports_chat", existing.get("supports_chat", True)),
+        "supports_image": _get_bool(config, section, "supports_image", existing.get("supports_image", False)),
+        "supports_video": _get_bool(config, section, "supports_video", existing.get("supports_video", False)),
         "backend": config.get(section, "backend", fallback=existing.get("backend", "openai_compatible")),
     }
     if config.has_section(section):
@@ -161,7 +162,7 @@ def load_providers() -> dict[str, dict[str, Any]]:
 
 
 def provider_names() -> list[str]:
-    names = [provider_id for provider_id, info in load_providers().items() if info.get("supports_chat", True)]
+    names = list(load_providers().keys())
     return names or ["openai"]
 
 
@@ -191,6 +192,10 @@ def normalize_base_url(base_url: str) -> str:
 def is_placeholder_secret(value: str) -> bool:
     value = (value or "").strip()
     return value.lower() in {"sk-xxxxx", "sk-xxxx", "placeholder", "your-api-key"}
+
+
+def is_oauth_marker(value: str) -> bool:
+    return (value or "").strip().lower() in {"oauth", "xai_oauth", "codex_oauth"}
 
 
 # (credential_input removed)
@@ -249,7 +254,7 @@ def has_provider_credentials(provider: str, resolved: dict[str, Any] | None = No
     api_key = str(resolved.get("api_key", "") or "").strip()
     if not api_key or is_placeholder_secret(api_key):
         return False
-    if api_key in {"oauth", "xai_oauth", "codex_oauth"}:
+    if is_oauth_marker(api_key):
         from .oauth import get_oauth_token
 
         oauth_provider = provider
@@ -268,13 +273,69 @@ def has_api_or_oauth_credentials(provider: str, resolved: dict[str, Any] | None 
     return has_provider_credentials(provider, resolved)
 
 
+def provider_credential_status(provider: str, resolved: dict[str, Any] | None = None) -> dict[str, Any]:
+    provider = validate_provider_id(provider)
+    resolved = resolved or resolve_provider(provider)
+    auth_type = str(resolved.get("auth_type", "") or "")
+
+    status = {
+        "api_key_configured": False,
+        "api_key_source": "none",
+        "oauth_supported": provider in {"xai", "codex"},
+        "oauth_configured": False,
+        "configured": False,
+        "no_credentials_required": auth_type == "none",
+    }
+
+    if status["no_credentials_required"]:
+        status["configured"] = True
+        return status
+
+    config = load_ini()
+    section = f"provider.{provider}"
+    section_key = config.get(section, "api_key", fallback="").strip() if config.has_section(section) else ""
+    if section_key and not is_placeholder_secret(section_key) and not is_oauth_marker(section_key):
+        status["api_key_configured"] = True
+        status["api_key_source"] = "config"
+    else:
+        for name in resolved.get("env_key_names", []):
+            env_key = os.environ.get(name, "").strip()
+            if env_key and not is_placeholder_secret(env_key):
+                status["api_key_configured"] = True
+                status["api_key_source"] = "env"
+                break
+
+    if status["oauth_supported"]:
+        from .oauth import get_oauth_token
+
+        status["oauth_configured"] = bool(get_oauth_token(provider))
+
+    status["configured"] = bool(status["api_key_configured"] or status["oauth_configured"])
+    return status
+
+
 def persona_files() -> list[str]:
     PERSONA_DIR.mkdir(exist_ok=True)
     names = sorted(p.stem for p in PERSONA_DIR.glob("*.txt"))
     return names or [""]
 
 
-def save_provider_config(provider_id: str, api_key: str, base_url: str) -> None:
+def validate_chat_backend(backend: str) -> str:
+    backend = str(backend or "").strip()
+    if backend not in CHAT_BACKENDS:
+        raise ValueError(f"Chat backend must be one of: {', '.join(sorted(CHAT_BACKENDS))}.")
+    return backend
+
+
+def save_provider_config(
+    provider_id: str,
+    api_key: str,
+    base_url: str,
+    supports_chat: bool | None = None,
+    supports_image: bool | None = None,
+    supports_video: bool | None = None,
+    backend: str | None = None,
+) -> None:
     provider_id = validate_provider_id(provider_id)
     with _CONFIG_LOCK:
         config = load_ini()
@@ -288,6 +349,53 @@ def save_provider_config(provider_id: str, api_key: str, base_url: str) -> None:
 
         if base_url is not None:
             config[section]["base_url"] = base_url.strip()
+        if supports_chat is not None:
+            config[section]["supports_chat"] = "true" if supports_chat else "false"
+        if supports_image is not None:
+            config[section]["supports_image"] = "true" if supports_image else "false"
+        if supports_video is not None:
+            config[section]["supports_video"] = "true" if supports_video else "false"
+        if backend is not None:
+            config[section]["backend"] = validate_chat_backend(backend)
+        save_ini(config)
+
+
+def rename_provider_config(old_provider_id: str, new_provider_id: str) -> None:
+    old_provider_id = validate_provider_id(old_provider_id)
+    new_provider_id = validate_provider_id(new_provider_id)
+    if old_provider_id == new_provider_id:
+        return
+
+    with _CONFIG_LOCK:
+        config = load_ini()
+        catalog = load_provider_catalog()
+        if old_provider_id in catalog:
+            raise ValueError("Built-in providers cannot be renamed.")
+        if new_provider_id in catalog:
+            raise ValueError("Provider ID already exists as a built-in provider.")
+
+        old_section = f"provider.{old_provider_id}"
+        new_section = f"provider.{new_provider_id}"
+        if not config.has_section(old_section):
+            raise ValueError(f"Provider '{old_provider_id}' does not exist.")
+        if config.has_section(new_section):
+            raise ValueError(f"Provider '{new_provider_id}' already exists.")
+
+        config.add_section(new_section)
+        for key, value in config.items(old_section):
+            config.set(new_section, key, value)
+        config.remove_section(old_section)
+
+        old_oauth_section = f"{old_provider_id}_oauth"
+        new_oauth_section = f"{new_provider_id}_oauth"
+        if config.has_section(old_oauth_section):
+            if config.has_section(new_oauth_section):
+                raise ValueError(f"OAuth config for '{new_provider_id}' already exists.")
+            config.add_section(new_oauth_section)
+            for key, value in config.items(old_oauth_section):
+                config.set(new_oauth_section, key, value)
+            config.remove_section(old_oauth_section)
+
         save_ini(config)
 
 

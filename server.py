@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 
-from .core.config import has_api_or_oauth_credentials, has_provider_credentials, load_providers, resolve_provider, validate_provider_id
+from .core.config import has_api_or_oauth_credentials, has_provider_credentials, load_providers, provider_credential_status, resolve_provider, validate_provider_id
 from .core.persona import persona_path
 from .providers.openai_compatible import list_models
 
@@ -47,6 +47,15 @@ def register_routes() -> None:
         payload["error"] = str(exc)
         return web.json_response(payload, status=400 if isinstance(exc, ValueError) else 500)
 
+    def json_bool(value, default=False):
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(value)
+
     @PromptServer.instance.routes.post("/llm-mini/providers")
     async def providers_route(request):
         return web.json_response({"providers": _provider_payload()})
@@ -74,11 +83,17 @@ def register_routes() -> None:
         try:
             provider = validate_provider_id(request.query.get("provider", "openai"))
             resolved = resolve_provider(provider)
+            credential_status = provider_credential_status(provider, resolved)
             has_key = has_provider_credentials(provider, resolved)
             return web.json_response({
                 "provider": provider,
                 "base_url": resolved.get("base_url", ""),
-                "has_key": has_key
+                "backend": resolved.get("backend", "openai_compatible"),
+                "has_key": has_key,
+                "credential_status": credential_status,
+                "supports_chat": bool(resolved.get("supports_chat")),
+                "supports_image": bool(resolved.get("supports_image")),
+                "supports_video": bool(resolved.get("supports_video")),
             })
         except Exception as exc:
             return route_error(exc)
@@ -88,14 +103,22 @@ def register_routes() -> None:
         try:
             data = await request.json()
             provider = validate_provider_id(data.get("provider", ""))
+            original_provider_raw = str(data.get("original_provider", "") or "").strip()
+            original_provider = validate_provider_id(original_provider_raw) if original_provider_raw else provider
             if not provider:
                 return web.json_response({"error": "Provider cannot be empty"}, status=400)
             
             api_key = data.get("api_key", "").strip()
             base_url = data.get("base_url", "").strip()
+            supports_chat = json_bool(data.get("supports_chat"), True)
+            supports_image = json_bool(data.get("supports_image"), False)
+            supports_video = json_bool(data.get("supports_video"), False)
+            backend = str(data.get("backend", "") or "").strip() or None
             
-            from .core.config import save_provider_config
-            await asyncio.to_thread(save_provider_config, provider, api_key, base_url)
+            from .core.config import rename_provider_config, save_provider_config
+            if original_provider != provider:
+                await asyncio.to_thread(rename_provider_config, original_provider, provider)
+            await asyncio.to_thread(save_provider_config, provider, api_key, base_url, supports_chat, supports_image, supports_video, backend)
             
             try:
                 resolved = resolve_provider(provider)

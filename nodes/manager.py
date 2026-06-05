@@ -20,7 +20,7 @@ class LLMMiniProviderManager(IO.ComfyNode):
                 IO.String.Input(
                     "new_provider_id",
                     optional=True,
-                    tooltip="Optional. Start with a letter or number; use only letters, numbers, dots, underscores, or hyphens (maximum 64 characters).",
+                    tooltip="Optional. Start with Chinese, a letter, or a number; use only Chinese, letters, numbers, dots, underscores, or hyphens (maximum 64 characters).",
                 ),
             ],
             outputs=[],  # 无任何输出插槽，不连线

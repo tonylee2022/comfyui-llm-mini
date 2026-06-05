@@ -1,19 +1,19 @@
 import { app } from "../../../scripts/app.js";
-import { TARGET_NODES, setupNodeByType } from "./modules/node_setup.js";
+import { isTargetNode, setupNodeByType } from "./modules/node_setup.js";
 import { localizeVueNodeDef, scheduleLocalization } from "./modules/localization.js";
 
 app.registerExtension({
   name: "ComfyUI.LLMMini.ModelSelector",
   beforeRegisterVueAppNodeDefs(nodeDefs) {
     for (const nodeDef of nodeDefs) {
-      if (nodeDef && TARGET_NODES.has(nodeDef.name)) {
+      if (nodeDef && isTargetNode(nodeDef.name)) {
         localizeVueNodeDef(nodeDef);
       }
     }
   },
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
-    if (!TARGET_NODES.has(nodeData.name)) return;
+    if (!isTargetNode(nodeData.name)) return;
     
     const original = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {
@@ -40,14 +40,14 @@ app.registerExtension({
   
   // 扩展生命周期钩子：当任何节点被创建并添加到图表中时调用
   nodeCreated(node) {
-    if (TARGET_NODES.has(node.comfyClass)) {
+    if (isTargetNode(node.comfyClass)) {
       scheduleLocalization(node, 50);
     }
   },
 
   // Nodes 2.0 synchronizes slots while loading a workflow, then invokes this hook.
   loadedGraphNode(node) {
-    if (TARGET_NODES.has(node.comfyClass)) {
+    if (isTargetNode(node.comfyClass)) {
       scheduleLocalization(node);
     }
   },
@@ -56,7 +56,7 @@ app.registerExtension({
   afterConfigureGraph() {
     if (app.graph && app.graph._nodes) {
       for (const node of app.graph._nodes) {
-        if (node && TARGET_NODES.has(node.comfyClass)) {
+        if (node && isTargetNode(node.comfyClass)) {
           scheduleLocalization(node, 100);
         }
       }

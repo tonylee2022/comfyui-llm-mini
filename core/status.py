@@ -79,7 +79,7 @@ class StatusUpdater:
                 first_line = err_msg.split('\n')[0].strip()
                 if is_safety_blocked:
                     try:
-                        from ..providers.xai import _is_chinese_locale
+                        from .xai import _is_chinese_locale
                         is_zh = _is_chinese_locale()
                     except Exception:
                         is_zh = False
@@ -91,4 +91,3 @@ class StatusUpdater:
             else:
                 elapsed = int(time.time() - self.start_time)
                 self._send(f"Status: Completed\nTime elapsed: {elapsed}s")
-

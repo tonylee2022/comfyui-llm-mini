@@ -8,6 +8,7 @@ import requests
 
 from ..core.config import normalize_base_url, resolve_provider
 from ..core.http_logging import log_http_response
+from ..core.interrupt import check_interrupted
 from ..core.media import tensor_to_data_uri
 from ..core.oauth import resolve_oauth_marker
 from .native import list_anthropic_models, list_gemini_models, send_anthropic_chat, send_gemini_sdk_chat
@@ -76,6 +77,7 @@ def _codex_messages(messages: list[dict]) -> tuple[str, list[dict]]:
 
 
 def call_codex_responses(api_key: str, model: str, messages: list[dict]) -> str:
+    check_interrupted()
     instructions, converted = _codex_messages(messages)
     payload = {"model": model, "instructions": instructions, "input": converted, "store": False, "stream": True}
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "Accept": "text/event-stream"}
@@ -86,6 +88,7 @@ def call_codex_responses(api_key: str, model: str, messages: list[dict]) -> str:
         raise RuntimeError(f"Codex Responses error HTTP {response.status_code}: {response.text}")
     chunks = []
     for raw in response.iter_lines():
+        check_interrupted()
         if not raw:
             continue
         line = raw.decode("utf-8").strip()

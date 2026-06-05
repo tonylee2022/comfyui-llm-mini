@@ -28,7 +28,7 @@
 - 支持 API Key、环境变量、Codex OAuth、xAI OAuth 凭据路径。
 - 支持 OpenAI-compatible、Claude、Gemini 聊天接口。
 - 支持 `persona/*.txt` 人格面具作为系统提示词。
-- OpenAI/Codex 图像共用面板，但后端实现路径分开。
+- OpenAI 与 Codex 图像使用独立节点，后端按提供商拆分。
 - 支持 xAI Imagine 与 xAI Video。
 - API Chat 默认从输出历史中移除 Base64 图像，避免工作流文件过大；可通过节点开关保留。
 
@@ -68,10 +68,11 @@ base_url = http://192.168.5.1:3000/api/
 Provider ID 必须以字母或数字开头，只能包含字母、数字、点、下划线和连字符，最长 64 个字符。`display_name` 可使用更友好的显示名称。
 
 重启 ComfyUI 后，聊天节点的 provider 下拉框会出现 `local_proxy`，并与 `openai` 独立。
+如需配置非聊天提供商，可设置 `supports_chat = false`，这样它不会出现在 API Chat 节点中。
 
 ## 节点参数说明
 
-- OpenAI/Codex 图像节点切换到 Codex 时，`model_name` 表示 Responses API 主模型，默认使用 `gpt-5.5`。
+- OpenAI Image 与 Codex Image 的 `model_name` 都表示 GPT Image 图像模型；Codex 后端固定使用 `gpt-5.5` 作为 Responses API 主模型，并把图像模型、尺寸、质量和背景传给 `image_generation` 工具。
 - OpenAI/Codex 与 xAI 节点中标注为缓存控制的 `seed` 只用于触发重新执行，不会发送给对应 API。
 
 ### Google (Gemini) 授权配置

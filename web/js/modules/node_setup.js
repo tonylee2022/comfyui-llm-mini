@@ -3,22 +3,9 @@ import { setupPersonaManager } from "./persona.js";
 import { setupProviderManager } from "./provider.js";
 import { scheduleLocalization } from "./localization.js";
 
-export const TARGET_NODES = new Set([
-  "LLMMiniApiChat",
-  "LLMMiniLoadPersona",
-  "LLMMiniOpenAICodexImage",
-  "LLMMiniXAIImagine",
-  "LLMMiniXAIVideo",
-  "LLMMiniXAIVideoReference",
-  "LLMMiniXAIVideoEdit",
-  "LLMMiniXAIVideoExtend",
-  "LLMMiniPersonaManager",
-  "LLMMiniGoogleImagen",
-  "LLMMiniGoogleGeminiNanoBanana",
-  "LLMMiniGoogleGeminiNanoBananaPro",
-  "LLMMiniGoogleGeminiNanoBanana2",
-  "LLMMiniProviderManager",
-]);
+export function isTargetNode(nodeName) {
+  return typeof nodeName === "string" && nodeName.startsWith("LLMMini");
+}
 
 export function setupNodeByType(node, nodeName) {
   scheduleLocalization(node);
@@ -32,37 +19,26 @@ export function setupNodeByType(node, nodeName) {
     node.size = [250, node.computeSize()[1]];
   }
 
-  if (["LLMMiniXAIVideo", "LLMMiniXAIVideoReference", "LLMMiniXAIVideoEdit", "LLMMiniXAIVideoExtend"].includes(nodeName)) {
+  if (/Video/.test(nodeName)) {
     node.size = [300, node.computeSize()[1]];
   }
 
-  const imageNodes = [
-    "LLMMiniOpenAICodexImage",
-    "LLMMiniXAIImagine",
-    "LLMMiniGoogleImagen",
-    "LLMMiniGoogleGeminiNanoBanana",
-    "LLMMiniGoogleGeminiNanoBananaPro",
-    "LLMMiniGoogleGeminiNanoBanana2"
-  ];
-  if (imageNodes.includes(nodeName)) {
+  if (/(Image|Imagine|Imagen|NanoBanana)/.test(nodeName)) {
     node.size = [300, node.computeSize()[1]];
   }
 
-  if (nodeName === "LLMMiniOpenAICodexImage") {
-    const backendWidget = findWidget(node, "execution_backend");
+  if (nodeName === "LLMMiniOpenAIImage" || nodeName === "LLMMiniCodexImage") {
     const modelWidget = findWidget(node, "model_name");
-    if (backendWidget && modelWidget) {
-      const updateModelOptions = (backend) => {
-        const models = backend === "codex"
-          ? ["gpt-5.5"]
-          : ["gpt-image-2", "gpt-image-1.5", "gpt-image-1"];
+    if (modelWidget) {
+      const updateModelOptions = () => {
+        const models = ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"];
         updateCombo(node, "model_name", models);
       };
-      updateModelOptions(backendWidget.value);
-      const originalCallback = backendWidget.callback;
-      backendWidget.callback = function (value) {
+      updateModelOptions();
+      const originalCallback = modelWidget.callback;
+      modelWidget.callback = function (value) {
         if (originalCallback) originalCallback.apply(this, arguments);
-        updateModelOptions(value);
+        updateModelOptions();
       };
     }
   }

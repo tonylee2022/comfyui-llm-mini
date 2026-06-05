@@ -3,7 +3,8 @@ import { app } from "../../../../scripts/app.js";
 import { t, findWidget, updateCombo, fetchProviderInfo, refreshProviderWidgets } from "./utils.js";
 import { showModelSelectionModal } from "./modal.js";
 
-const PROVIDER_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const PROVIDER_ID_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,63}$/u;
+const CHAT_BACKENDS = ["openai_compatible", "anthropic"];
 
 function updateAllRelatedNodes(providerId, models) {
   if (!app.graph || !app.graph._nodes) return;
@@ -26,6 +27,7 @@ async function refreshAllApiChatNodes() {
 
 export async function setupProviderManager(node) {
   let currentProvidersData = [];
+  let chatBackendConfigurable = true;
   const providerWidget = findWidget(node, "provider");
   const newProviderIdWidget = findWidget(node, "new_provider_id");
 
@@ -36,6 +38,20 @@ export async function setupProviderManager(node) {
   // 添加 API Key Widget
   const apiKeyWidget = node.addWidget("text", "API Key", "", () => {}, { type: "password" });
   apiKeyWidget.serializeValue = () => undefined;
+
+  const chatBackendWidget = node.addWidget("combo", "Chat Backend", "openai_compatible", () => {}, {
+    values: CHAT_BACKENDS
+  });
+  chatBackendWidget.serializeValue = () => undefined;
+
+  const supportsChatWidget = node.addWidget("toggle", t("Chat", "聊天"), true, () => {});
+  supportsChatWidget.serializeValue = () => undefined;
+
+  const supportsImageWidget = node.addWidget("toggle", t("Image", "图像"), false, () => {});
+  supportsImageWidget.serializeValue = () => undefined;
+
+  const supportsVideoWidget = node.addWidget("toggle", t("Video", "视频"), false, () => {});
+  supportsVideoWidget.serializeValue = () => undefined;
 
   // 添加只读的 Auth Status 看板 Widget
   const statusWidget = node.addWidget("text", "Auth Status", "", () => {}, { multiline: true });
@@ -103,6 +119,65 @@ export async function setupProviderManager(node) {
     }, 2000);
   }
 
+  function credentialStatusMessage(status, provider) {
+    if (!status) {
+      return t(
+        `Credentials: ${provider ? "loading" : "unknown"}`,
+        `凭据状态：${provider ? "正在读取" : "未知"}`
+      );
+    }
+
+    if (status.no_credentials_required) {
+      return t(
+        `✅ No credentials required.`,
+        `✅ 不需要凭据。`
+      );
+    }
+
+    let apiKeyLine = "";
+    if (status.api_key_configured) {
+      if (status.api_key_source === "env") {
+        apiKeyLine = t(
+          `API Key: configured (environment variable)`,
+          `API Key：已配置（环境变量）`
+        );
+      } else {
+        apiKeyLine = t(
+          `API Key: configured (config.ini)`,
+          `API Key：已配置（config.ini）`
+        );
+      }
+    } else {
+      apiKeyLine = t(
+        `API Key: not configured`,
+        `API Key：未配置`
+      );
+    }
+
+    const lines = [apiKeyLine];
+    if (status.oauth_supported) {
+      lines.push(status.oauth_configured ? t(
+        `OAuth: authorized`,
+        `OAuth：已授权`
+      ) : t(
+        `OAuth: not authorized`,
+        `OAuth：未授权`
+      ));
+    }
+
+    if (!status.configured) {
+      lines.push(status.oauth_supported ? t(
+        `Please enter API Key or use OAuth authorization below.`,
+        `请输入 API Key，或使用下方 OAuth 授权。`
+      ) : t(
+        `Please enter API Key and click Save Config.`,
+        `请输入 API Key 并点击保存配置。`
+      ));
+    }
+
+    return `${status.configured ? "✅" : "⚠️"} ${lines.join("\n")}`;
+  }
+
   async function refreshProvidersList(selectProviderId = null) {
     try {
       const providers = await fetchProviderInfo();
@@ -131,6 +206,11 @@ export async function setupProviderManager(node) {
     if (!provider || provider === "custom_provider") {
       baseUrlWidget.value = "";
       apiKeyWidget.value = "";
+      chatBackendWidget.value = "openai_compatible";
+      chatBackendConfigurable = true;
+      supportsChatWidget.value = true;
+      supportsImageWidget.value = false;
+      supportsVideoWidget.value = false;
       statusWidget.value = t("Please enter new Provider ID to create.", "请在上方输入新 Provider ID 进行创建。");
       node.setDirtyCanvas(true, true);
       return;
@@ -146,36 +226,38 @@ export async function setupProviderManager(node) {
       
       const rawBaseUrl = data.base_url || "";
       if (provider === "google" && !rawBaseUrl) {
-        baseUrlWidget.value = t("Leave blank for direct connection", "无需填写 (直连官方)");
+        baseUrlWidget.value = t("Leave blank (Google GenAI SDK)", "无需填写（Google GenAI SDK）");
       } else {
         baseUrlWidget.value = rawBaseUrl;
       }
 
-      if (data.has_key) {
+      const backend = data.backend || "openai_compatible";
+      if (CHAT_BACKENDS.includes(backend)) {
+        chatBackendWidget.value = backend;
+        chatBackendConfigurable = true;
+      } else {
+        chatBackendWidget.value = "openai_compatible";
+        chatBackendConfigurable = false;
+      }
+
+      const credentialStatus = data.credential_status || {
+        api_key_configured: data.has_key === true,
+        api_key_source: data.has_key === true ? "config" : "none",
+        oauth_supported: provider === "xai" || provider === "codex",
+        oauth_configured: false,
+        configured: data.has_key === true,
+        no_credentials_required: provider === "ollama"
+      };
+
+      if (credentialStatus.api_key_configured && credentialStatus.api_key_source === "config") {
         apiKeyWidget.value = "[CONFIGURED]";
-        statusWidget.value = t(
-          `🔑 Credentials configured and ready.`,
-          `🔑 凭据已配置，随时可用。`
-        );
       } else {
         apiKeyWidget.value = "";
-        if (provider === "xai" || provider === "codex") {
-          statusWidget.value = t(
-            `⚠️ Credentials not configured.\nPlease enter API Key or click OAuth below to authorize.`,
-            `⚠️ 凭据未配置。\n请输入 API Key 或点击下方按钮进行网页/设备码授权。`
-          );
-        } else if (provider === "ollama") {
-          statusWidget.value = t(
-            `✅ Ollama is ready (no credentials required).`,
-            `✅ Ollama 已就绪（不需要凭据）。`
-          );
-        } else {
-          statusWidget.value = t(
-            `⚠️ Credentials not configured.\nPlease enter API Key and click Save Config.`,
-            `⚠️ 凭据未配置。\n请输入 API Key 并点击保存配置。`
-          );
-        }
       }
+      statusWidget.value = credentialStatusMessage(credentialStatus, provider);
+      supportsChatWidget.value = data.supports_chat !== false;
+      supportsImageWidget.value = data.supports_image === true;
+      supportsVideoWidget.value = data.supports_video === true;
       node.setDirtyCanvas(true, true);
     } catch (err) {
       statusWidget.value = t(`Error loading config: ${err.message}`, `加载配置失败: ${err.message}`);
@@ -192,6 +274,7 @@ export async function setupProviderManager(node) {
   const saveLabel = t("Save Config", "保存配置");
   node.addWidget("button", saveLabel, saveLabel, async () => {
     let provider = providerWidget.value;
+    let originalProvider = "";
     const newId = newProviderIdWidget ? newProviderIdWidget.value.trim() : "";
     if (provider === "custom_provider") {
       if (!newId) {
@@ -200,17 +283,33 @@ export async function setupProviderManager(node) {
       }
       if (!PROVIDER_ID_PATTERN.test(newId)) {
         alert(t(
-          "Provider ID must start with a letter or number and contain only letters, numbers, dots, underscores, or hyphens (maximum 64 characters).",
-          "提供商 ID 必须以字母或数字开头，仅可包含字母、数字、点、下划线或连字符，最长 64 个字符。"
+          "Provider ID must start with a Chinese character, letter, or number and contain only Chinese characters, letters, numbers, dots, underscores, or hyphens (maximum 64 characters).",
+          "提供商 ID 必须以中文、字母或数字开头，仅可包含中文、字母、数字、点、下划线或连字符，最长 64 个字符。"
         ));
         return;
       }
       provider = newId;
+    } else if (newId) {
+      if (!PROVIDER_ID_PATTERN.test(newId)) {
+        alert(t(
+          "Provider ID must start with a Chinese character, letter, or number and contain only Chinese characters, letters, numbers, dots, underscores, or hyphens (maximum 64 characters).",
+          "提供商 ID 必须以中文、字母或数字开头，仅可包含中文、字母、数字、点、下划线或连字符，最长 64 个字符。"
+        ));
+        return;
+      }
+      if (newId !== provider) {
+        originalProvider = provider;
+        provider = newId;
+      }
     }
 
     const apiKey = apiKeyWidget.value;
     let baseUrl = baseUrlWidget.value;
-    if (provider === "google" && (baseUrl === "无需填写 (直连官方)" || baseUrl === "Leave blank for direct connection")) {
+    const googleBaseUrlPlaceholders = [
+      "无需填写（Google GenAI SDK）",
+      "Leave blank (Google GenAI SDK)"
+    ];
+    if (provider === "google" && googleBaseUrlPlaceholders.includes(baseUrl)) {
       baseUrl = "";
     }
 
@@ -223,8 +322,13 @@ export async function setupProviderManager(node) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           provider: provider,
+          original_provider: originalProvider,
           api_key: apiKey,
-          base_url: baseUrl
+          base_url: baseUrl,
+          ...(chatBackendConfigurable ? { backend: chatBackendWidget.value } : {}),
+          supports_chat: supportsChatWidget.value === true,
+          supports_image: supportsImageWidget.value === true,
+          supports_video: supportsVideoWidget.value === true
         })
       });
       const data = await response.json();
