@@ -302,7 +302,50 @@ class GoogleImagenNode(IO.ComfyNode):
             return (error_image(),)
 
 
-class GoogleGeminiNanoBananaNode(IO.ComfyNode):
+class BaseGeminiImageNode(IO.ComfyNode):
+    @classmethod
+    def execute_gemini_image(
+        cls,
+        node_name: str,
+        status_title: str,
+        prompt: str,
+        model: str,
+        aspect_ratio: str,
+        response_modalities: str,
+        system_prompt: str,
+        seed: int,
+        images = None,
+        files = None,
+        resolution: str | None = None,
+        thinking_level: str | None = None,
+        unique_id: str | None = None,
+    ):
+        node_id = get_unique_id(cls, unique_id)
+        try:
+            with StatusUpdater(node_id, status_title) as updater:
+                info = resolve_provider("google")
+                res_image, res_text = google_gemini_image_generate(
+                    prompt=prompt,
+                    model=model,
+                    image_tensors=image_tensors_from_input(images),
+                    files=files,
+                    aspect_ratio=aspect_ratio,
+                    resolution=resolution,
+                    response_modalities=response_modalities,
+                    seed=seed,
+                    api_key=info.get("api_key", ""),
+                    base_url=info.get("base_url", ""),
+                    thinking_level=thinking_level,
+                    system_prompt=system_prompt,
+                    status_updater=updater,
+                )
+                return (res_image, res_text)
+        except Exception as exc:
+            format_error(node_name, exc)
+            return (error_image(), str(exc))
+
+
+class GoogleGeminiNanoBananaNode(BaseGeminiImageNode):
     @classmethod
     def define_schema(cls):
         return IO.Schema(
@@ -338,31 +381,22 @@ class GoogleGeminiNanoBananaNode(IO.ComfyNode):
 
     @classmethod
     def execute(cls, prompt, model, aspect_ratio, response_modalities, system_prompt, seed, images=None, files=None, unique_id=None):
-        node_id = get_unique_id(cls, unique_id)
-        try:
-            with StatusUpdater(node_id, "Generating (Google Gemini)") as updater:
-                info = resolve_provider("google")
-                res_image, res_text = google_gemini_image_generate(
-                    prompt=prompt,
-                    model=model,
-                    image_tensors=image_tensors_from_input(images),
-                    files=files,
-                    aspect_ratio=aspect_ratio,
-                    resolution=None,
-                    response_modalities=response_modalities,
-                    seed=seed,
-                    api_key=info.get("api_key", ""),
-                    base_url=info.get("base_url", ""),
-                    system_prompt=system_prompt,
-                    status_updater=updater,
-                )
-                return (res_image, res_text)
-        except Exception as exc:
-            format_error("Nano Banana", exc)
-            return (error_image(), str(exc))
+        return cls.execute_gemini_image(
+            node_name="Nano Banana",
+            status_title="Generating (Google Gemini)",
+            prompt=prompt,
+            model=model,
+            aspect_ratio=aspect_ratio,
+            response_modalities=response_modalities,
+            system_prompt=system_prompt,
+            seed=seed,
+            images=images,
+            files=files,
+            unique_id=unique_id,
+        )
 
 
-class GoogleGeminiNanoBananaProNode(IO.ComfyNode):
+class GoogleGeminiNanoBananaProNode(BaseGeminiImageNode):
     @classmethod
     def define_schema(cls):
         return IO.Schema(
@@ -399,31 +433,23 @@ class GoogleGeminiNanoBananaProNode(IO.ComfyNode):
 
     @classmethod
     def execute(cls, prompt, model, aspect_ratio, resolution, response_modalities, system_prompt, seed, images=None, files=None, unique_id=None):
-        node_id = get_unique_id(cls, unique_id)
-        try:
-            with StatusUpdater(node_id, "Generating (Google Gemini Pro)") as updater:
-                info = resolve_provider("google")
-                res_image, res_text = google_gemini_image_generate(
-                    prompt=prompt,
-                    model=model,
-                    image_tensors=image_tensors_from_input(images),
-                    files=files,
-                    aspect_ratio=aspect_ratio,
-                    resolution=resolution,
-                    response_modalities=response_modalities,
-                    seed=seed,
-                    api_key=info.get("api_key", ""),
-                    base_url=info.get("base_url", ""),
-                    system_prompt=system_prompt,
-                    status_updater=updater,
-                )
-                return (res_image, res_text)
-        except Exception as exc:
-            format_error("Nano Banana Pro", exc)
-            return (error_image(), str(exc))
+        return cls.execute_gemini_image(
+            node_name="Nano Banana Pro",
+            status_title="Generating (Google Gemini Pro)",
+            prompt=prompt,
+            model=model,
+            aspect_ratio=aspect_ratio,
+            resolution=resolution,
+            response_modalities=response_modalities,
+            system_prompt=system_prompt,
+            seed=seed,
+            images=images,
+            files=files,
+            unique_id=unique_id,
+        )
 
 
-class GoogleGeminiNanoBanana2Node(IO.ComfyNode):
+class GoogleGeminiNanoBanana2Node(BaseGeminiImageNode):
     @classmethod
     def define_schema(cls):
         return IO.Schema(
@@ -461,29 +487,21 @@ class GoogleGeminiNanoBanana2Node(IO.ComfyNode):
 
     @classmethod
     def execute(cls, prompt, model, aspect_ratio, resolution, response_modalities, thinking_level, system_prompt, seed, images=None, files=None, unique_id=None):
-        node_id = get_unique_id(cls, unique_id)
-        try:
-            with StatusUpdater(node_id, "Generating (Google Nano Banana 2)") as updater:
-                info = resolve_provider("google")
-                res_image, res_text = google_gemini_image_generate(
-                    prompt=prompt,
-                    model=model,
-                    image_tensors=image_tensors_from_input(images),
-                    files=files,
-                    aspect_ratio=aspect_ratio,
-                    resolution=resolution,
-                    response_modalities=response_modalities,
-                    seed=seed,
-                    api_key=info.get("api_key", ""),
-                    base_url=info.get("base_url", ""),
-                    thinking_level=thinking_level,
-                    system_prompt=system_prompt,
-                    status_updater=updater,
-                )
-                return (res_image, res_text)
-        except Exception as exc:
-            format_error("Nano Banana 2", exc)
-            return (error_image(), str(exc))
+        return cls.execute_gemini_image(
+            node_name="Nano Banana 2",
+            status_title="Generating (Google Nano Banana 2)",
+            prompt=prompt,
+            model=model,
+            aspect_ratio=aspect_ratio,
+            resolution=resolution,
+            response_modalities=response_modalities,
+            thinking_level=thinking_level,
+            system_prompt=system_prompt,
+            seed=seed,
+            images=images,
+            files=files,
+            unique_id=unique_id,
+        )
 
 
 NODE_CLASS_MAPPINGS = {

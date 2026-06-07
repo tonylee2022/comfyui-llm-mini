@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from io import BytesIO
+import logging
+
+logger = logging.getLogger("LLMMini")
 
 from ...core.media import downscale_image_tensor, image_source_to_tensor
 
@@ -21,7 +24,7 @@ def error_image():
 
 def format_error(label: str, exc: Exception) -> str:
     message = f"LLM Mini {label} request failed: {exc}"
-    print(f"[LLM Mini] {message}", flush=True)
+    logger.error(message)
     return message
 
 

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import re
+import logging
+
+logger = logging.getLogger("LLMMini")
 from dataclasses import dataclass
 
 import requests
@@ -129,7 +132,7 @@ def list_models(provider: str, api_key: str = "", base_url: str = "") -> list[st
     except Exception as e:
         raise RuntimeError(f"Failed to connect to provider '{provider}' at {url}. Please check if the service is running. Error: {e}")
     if response.status_code != 200:
-        print(f"[LLM Mini] Model list failed for {provider}: HTTP {response.status_code} {response.text}")
+        logger.error(f"Model list failed for {provider}: HTTP {response.status_code} {response.text}")
         return info.get("default_models", [])
     data = response.json()
     models = [item.get("id") for item in data.get("data", []) if item.get("id")]
@@ -148,7 +151,7 @@ class ApiChatClient:
     api_key: str
     base_url: str
 
-    def send(self, user_prompt: str, system_prompt: str, temperature: float, max_tokens: int, history_json: str = "", image=None, image_url: str = "", stream: bool = False, extra_parameters: dict | None = None, thinking_level: str = "auto", retain_images_in_history: bool = False) -> tuple[str, str, str]:
+    def _prepare_extra_parameters(self, extra_parameters: dict | None, thinking_level: str) -> dict:
         extra_parameters = (extra_parameters or {}).copy()
         if thinking_level and thinking_level != "auto":
             model_name_lower = self.model_name.lower()
@@ -170,14 +173,23 @@ class ApiChatClient:
                     "high": "high"
                 }
                 extra_parameters["reasoning_effort"] = effort_map.get(thinking_level, "medium")
+        return extra_parameters
+
+    def _resolve_credentials(self) -> tuple[str, str, str, str]:
         provider_info = resolve_provider(self.provider, self.api_key, self.base_url)
         backend = provider_info.get("backend", "openai_compatible")
-        if backend == "gemini" and thinking_level:
-            extra_parameters["thinking_level"] = thinking_level
-        api_key, base_url, oauth_provider = resolve_oauth_marker(provider_info.get("api_key", ""), self.provider, provider_info.get("base_url", ""), self.model_name)
+        api_key, base_url, oauth_provider = resolve_oauth_marker(
+            provider_info.get("api_key", ""),
+            self.provider,
+            provider_info.get("base_url", ""),
+            self.model_name
+        )
         base_url = normalize_base_url(base_url)
         if not api_key and self.provider != "ollama":
             raise RuntimeError("No API key or OAuth token found for selected provider.")
+        return api_key, base_url, oauth_provider, backend
+
+    def _build_messages(self, system_prompt: str, user_prompt: str, history_json: str, image, image_url: str) -> list[dict]:
         try:
             messages = json.loads(history_json) if history_json else [{"role": "system", "content": system_prompt}]
         except json.JSONDecodeError:
@@ -186,6 +198,7 @@ class ApiChatClient:
             messages[0]["content"] = system_prompt
         else:
             messages.insert(0, {"role": "system", "content": system_prompt})
+        
         content = user_prompt
         image_items = []
         if image is not None:
@@ -199,13 +212,37 @@ class ApiChatClient:
                     else:
                         expanded_tensors.append(t)
             image_items.extend({"type": "image_url", "image_url": {"url": tensor_to_data_uri(t)}} for t in expanded_tensors if t is not None)
+        
         clean_url = str(image_url or "").strip()
         if clean_url and (clean_url.startswith("http://") or clean_url.startswith("https://") or clean_url.startswith("data:")):
             image_items.append({"type": "image_url", "image_url": {"url": clean_url}})
+        
         if image_items:
             content = [{"type": "text", "text": user_prompt}, *image_items]
+        
         messages.append({"role": "user", "content": content})
+        return messages
+
+    def _extract_reasoning(self, response_text: str, api_reasoning: str) -> tuple[str, str]:
+        reasoning = ""
+        if api_reasoning:
+            reasoning = api_reasoning.strip()
+        else:
+            match = re.search(r"<think>(.*?)</think>", response_text, re.DOTALL)
+            if match:
+                reasoning = match.group(1).strip()
+                response_text = response_text.replace(match.group(0), "").strip()
+        return reasoning, response_text
+
+    def send(self, user_prompt: str, system_prompt: str, temperature: float, max_tokens: int, history_json: str = "", image=None, image_url: str = "", stream: bool = False, extra_parameters: dict | None = None, thinking_level: str = "auto", retain_images_in_history: bool = False) -> tuple[str, str, str]:
+        extra_parameters = self._prepare_extra_parameters(extra_parameters, thinking_level)
+        api_key, base_url, oauth_provider, backend = self._resolve_credentials()
+        if backend == "gemini" and thinking_level:
+            extra_parameters["thinking_level"] = thinking_level
+        
+        messages = self._build_messages(system_prompt, user_prompt, history_json, image, image_url)
         api_reasoning = ""
+        
         if backend == "anthropic":
             response_text = send_anthropic_chat(api_key, self.model_name, messages, temperature, max_tokens, stream, extra_parameters, base_url=base_url)
         elif backend == "gemini":
@@ -235,14 +272,8 @@ class ApiChatClient:
                 message = response.choices[0].message
                 response_text = message.content or ""
                 api_reasoning = getattr(message, "reasoning_content", None) or ""
-        reasoning = ""
-        if api_reasoning:
-            reasoning = api_reasoning.strip()
-        else:
-            match = re.search(r"<think>(.*?)</think>", response_text, re.DOTALL)
-            if match:
-                reasoning = match.group(1).strip()
-                response_text = response_text.replace(match.group(0), "").strip()
+        
+        reasoning, response_text = self._extract_reasoning(response_text, api_reasoning)
         messages.append({"role": "assistant", "content": response_text})
         output_messages = messages if retain_images_in_history else _history_without_base64_images(messages)
         return response_text, json.dumps(output_messages, ensure_ascii=False, indent=2), reasoning

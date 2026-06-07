@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import time
+import logging
+
+logger = logging.getLogger("LLMMini")
 
 from .core.config import has_api_or_oauth_credentials, has_provider_credentials, load_providers, provider_credential_status, resolve_provider, validate_provider_id
 from .core.persona import persona_path
@@ -40,7 +43,7 @@ def register_routes() -> None:
         from aiohttp import web
         from server import PromptServer
     except Exception as exc:
-        print(f"[LLM Mini] PromptServer unavailable, route registration skipped: {exc}")
+        logger.warning(f"PromptServer unavailable, route registration skipped: {exc}")
         return
 
     def route_error(exc: Exception, **payload):

@@ -100,3 +100,32 @@ export async function refreshProviderWidgets(node) {
     console.warn("LLM Mini provider refresh failed:", error);
   }
 }
+
+export function copyToClipboard(text) {
+  if (!text) return false;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).catch(err => {
+      console.warn("Navigator clipboard copy failed, falling back:", err);
+      fallbackCopy(text);
+    });
+  } else {
+    fallbackCopy(text);
+  }
+  return true;
+}
+
+function fallbackCopy(text) {
+  const textArea = document.createElement("textarea");
+  textArea.value = text;
+  textArea.style.position = "fixed";
+  textArea.style.top = "-9999px";
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+  try {
+    document.execCommand("copy");
+  } catch (err) {
+    console.error("Fallback copy failed:", err);
+  }
+  document.body.removeChild(textArea);
+}

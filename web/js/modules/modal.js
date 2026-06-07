@@ -207,6 +207,79 @@ const CSS_STYLE = `
 .llm-mini-modal-btn-save:active {
   transform: translateY(0);
 }
+
+.llm-mini-modal-code-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+}
+.llm-mini-modal-code-title {
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 500;
+}
+.llm-mini-modal-code-value {
+  width: 100%;
+  max-width: 320px;
+  box-sizing: border-box;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #a78bfa;
+  font-family: monospace;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 14px 28px;
+  border-radius: 8px;
+  border: 1px dashed rgba(167, 139, 250, 0.4);
+  text-align: center;
+  outline: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+.llm-mini-modal-code-value:hover,
+.llm-mini-modal-code-value:focus {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(167, 139, 250, 0.8);
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.2), 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+.llm-mini-modal-buttons-row {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  justify-content: center;
+  margin-top: 8px;
+}
+.llm-mini-modal-btn-copy {
+  background: rgba(129, 140, 248, 0.12);
+  color: #a5b4fc;
+  border: 1px solid rgba(129, 140, 248, 0.25);
+}
+.llm-mini-modal-btn-copy:hover {
+  background: rgba(129, 140, 248, 0.22);
+  color: #fff;
+}
+.llm-mini-modal-btn-open {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+.llm-mini-modal-btn-open:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.4);
+}
+.llm-mini-modal-btn-open:active {
+  transform: translateY(0);
+}
+.llm-mini-modal-instructions {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+  line-height: 1.6;
+  max-width: 90%;
+  margin-bottom: 8px;
+}
 `;
 
 let styleInjected = false;
@@ -265,7 +338,7 @@ export function showModelSelectionModal(provider, models, currentlyConfiguredMod
   const modelElements = [];
   const currentlyConfiguredSet = new Set(currentlyConfiguredModels || []);
   const selectedModels = new Set();
-  
+
   // 预勾选已配置的模型
   if (currentlyConfiguredModels && currentlyConfiguredModels.length) {
     currentlyConfiguredModels.forEach(m => {
@@ -415,4 +488,161 @@ export function showModelSelectionModal(provider, models, currentlyConfiguredMod
   // Force reflow for CSS transition
   overlay.offsetWidth;
   overlay.classList.add("active");
+}
+
+function selectDeviceCode(input) {
+  input.focus();
+  input.select();
+  input.setSelectionRange(0, input.value.length);
+}
+
+async function copyDeviceCode(text, input) {
+  if (!text) return false;
+  selectDeviceCode(input);
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (err) {
+      console.warn("Navigator clipboard copy failed, falling back:", err);
+    }
+  }
+  try {
+    return document.execCommand("copy");
+  } catch (err) {
+    console.error("Fallback copy failed:", err);
+    return false;
+  }
+}
+
+export function showDeviceAuthModal(provider, userCode, verificationUri, onCancel) {
+  injectStyles();
+
+  // 避免重复打开
+  const existing = document.getElementById("llm-mini-device-auth-modal-overlay");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "llm-mini-device-auth-modal-overlay";
+  overlay.className = "llm-mini-modal-overlay";
+
+  const modal = document.createElement("div");
+  modal.className = "llm-mini-modal";
+  modal.style.width = "450px";
+  overlay.appendChild(modal);
+
+  // Header
+  const header = document.createElement("div");
+  header.className = "llm-mini-modal-header";
+  const title = document.createElement("h3");
+  title.className = "llm-mini-modal-title";
+  title.textContent = `${t("Device Authorization", "设备码授权")} (${provider})`;
+  header.appendChild(title);
+
+  const closeButton = document.createElement("button");
+  closeButton.className = "llm-mini-modal-close";
+  closeButton.textContent = "×";
+  header.appendChild(closeButton);
+  modal.appendChild(header);
+
+  // Body
+  const body = document.createElement("div");
+  body.className = "llm-mini-modal-body";
+
+  const codeContainer = document.createElement("div");
+  codeContainer.className = "llm-mini-modal-code-container";
+
+  const codeTitle = document.createElement("div");
+  codeTitle.className = "llm-mini-modal-code-title";
+  codeTitle.textContent = t("Your Device Verification Code:", "您的设备授权验证码：");
+  codeContainer.appendChild(codeTitle);
+
+  const codeValue = document.createElement("input");
+  codeValue.className = "llm-mini-modal-code-value";
+  codeValue.type = "text";
+  codeValue.readOnly = true;
+  codeValue.value = userCode;
+  codeValue.title = t("Click to select all", "点击全选");
+  codeValue.addEventListener("focus", () => selectDeviceCode(codeValue));
+  codeValue.addEventListener("click", () => selectDeviceCode(codeValue));
+  codeContainer.appendChild(codeValue);
+
+  const instructions = document.createElement("div");
+  instructions.className = "llm-mini-modal-instructions";
+  instructions.textContent = t(
+    "Click Copy Code, then paste it on the authorization page.",
+    "点击复制验证码，然后粘贴到授权页面。"
+  );
+  codeContainer.appendChild(instructions);
+
+  const buttonsRow = document.createElement("div");
+  buttonsRow.className = "llm-mini-modal-buttons-row";
+
+  // 复制按钮
+  const copyBtn = document.createElement("button");
+  copyBtn.className = "llm-mini-modal-btn llm-mini-modal-btn-copy";
+  copyBtn.textContent = t("Copy Code", "复制验证码");
+  copyBtn.addEventListener("click", async () => {
+    const success = await copyDeviceCode(userCode, codeValue);
+    if (success) {
+      copyBtn.textContent = t("Copied!", "已复制！");
+      copyBtn.style.background = "rgba(52, 211, 153, 0.15)";
+      copyBtn.style.color = "#34d399";
+      copyBtn.style.borderColor = "rgba(52, 211, 153, 0.3)";
+      setTimeout(() => {
+        copyBtn.textContent = t("Copy Code", "复制验证码");
+        copyBtn.style.background = "";
+        copyBtn.style.color = "";
+        copyBtn.style.borderColor = "";
+      }, 2000);
+    } else {
+      alert(t("Copy failed. The code is selected, press Ctrl+C to copy it.", "复制失败。验证码已选中，请按 Ctrl+C 复制。"));
+    }
+  });
+  buttonsRow.appendChild(copyBtn);
+
+  // 打开页面按钮
+  const openBtn = document.createElement("button");
+  openBtn.className = "llm-mini-modal-btn llm-mini-modal-btn-open";
+  openBtn.textContent = t("Open Auth Page", "打开授权页面");
+  openBtn.addEventListener("click", () => {
+    window.open(verificationUri, "_blank");
+  });
+  buttonsRow.appendChild(openBtn);
+
+  codeContainer.appendChild(buttonsRow);
+  body.appendChild(codeContainer);
+  modal.appendChild(body);
+
+  // Footer
+  const footer = document.createElement("div");
+  footer.className = "llm-mini-modal-footer";
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.className = "llm-mini-modal-btn llm-mini-modal-btn-cancel";
+  cancelBtn.textContent = t("Close", "关闭");
+  footer.appendChild(cancelBtn);
+  modal.appendChild(footer);
+
+  const closeModal = () => {
+    overlay.classList.remove("active");
+    setTimeout(() => overlay.remove(), 250);
+    if (onCancel) onCancel();
+  };
+
+  closeButton.addEventListener("click", closeModal);
+  cancelBtn.addEventListener("click", closeModal);
+
+  // Append & Show
+  document.body.appendChild(overlay);
+  overlay.offsetWidth;
+  overlay.classList.add("active");
+  setTimeout(() => selectDeviceCode(codeValue), 50);
+
+  return {
+    close: () => {
+      overlay.classList.remove("active");
+      setTimeout(() => overlay.remove(), 250);
+    }
+  };
 }

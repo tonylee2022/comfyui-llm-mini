@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import configparser
 import json
+import logging
+
+logger = logging.getLogger("LLMMini")
 import os
 import re
 import tempfile
@@ -16,8 +19,11 @@ PROVIDERS_PATH = PACKAGE_DIR / "config" / "providers.json"
 PERSONA_DIR = PACKAGE_DIR / "persona"
 TEMP_DIR = PACKAGE_DIR / "temp"
 PROVIDER_ID_PATTERN = re.compile(r"^[^\W_][\w.-]{0,63}$", re.UNICODE)
-CHAT_BACKENDS = {"openai_compatible", "anthropic"}
+CHAT_BACKENDS = {"openai_compatible", "anthropic", "gemini", "xai", "codex"}
 _CONFIG_LOCK = threading.RLock()
+_catalog_cache = None
+_ini_cache = None
+_providers_cache = None
 
 # (credential source constants removed)
 
@@ -36,15 +42,29 @@ DEFAULT_OPENAI_COMPATIBLE = {
 
 
 def load_ini() -> configparser.ConfigParser:
+    global _ini_cache
     with _CONFIG_LOCK:
-        config = configparser.ConfigParser()
-        if CONFIG_PATH.exists():
-            config.read(CONFIG_PATH, encoding="utf-8")
-        return config
+        if _ini_cache is None:
+            config = configparser.ConfigParser()
+            if CONFIG_PATH.exists():
+                try:
+                    if os.name != "nt":
+                        import stat
+                        current_mode = stat.S_IMODE(CONFIG_PATH.stat().st_mode)
+                        if current_mode != 0o600:
+                            os.chmod(CONFIG_PATH, 0o600)
+                except OSError:
+                    pass
+                config.read(CONFIG_PATH, encoding="utf-8")
+            _ini_cache = config
+        return _ini_cache
 
 
 def save_ini(config: configparser.ConfigParser) -> None:
+    global _ini_cache, _providers_cache
     with _CONFIG_LOCK:
+        _ini_cache = None
+        _providers_cache = None
         CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
         temp_path = None
         try:
@@ -98,8 +118,12 @@ def _get_bool(config: configparser.ConfigParser, section: str, option: str, defa
 
 
 def load_provider_catalog() -> dict[str, dict[str, Any]]:
-    with PROVIDERS_PATH.open("r", encoding="utf-8") as f:
-        return json.load(f)
+    global _catalog_cache
+    with _CONFIG_LOCK:
+        if _catalog_cache is None:
+            with PROVIDERS_PATH.open("r", encoding="utf-8") as f:
+                _catalog_cache = json.load(f)
+        return _catalog_cache
 
 
 def configured_provider_ids() -> list[str]:
@@ -146,19 +170,22 @@ def _merge_provider(provider_id: str, catalog: dict[str, dict[str, Any]], config
 
 
 def load_providers() -> dict[str, dict[str, Any]]:
-    catalog = load_provider_catalog()
-
-    config = load_ini()
-    providers: dict[str, dict[str, Any]] = {}
-    for section in config.sections():
-        if not section.startswith("provider."):
-            continue
-        provider_id = section.removeprefix("provider.").strip()
-        if not PROVIDER_ID_PATTERN.fullmatch(provider_id):
-            print(f"[LLM Mini] Skipping invalid provider section: {section}")
-            continue
-        providers[provider_id] = _merge_provider(provider_id, catalog, config)
-    return providers
+    global _providers_cache
+    with _CONFIG_LOCK:
+        if _providers_cache is None:
+            catalog = load_provider_catalog()
+            config = load_ini()
+            providers: dict[str, dict[str, Any]] = {}
+            for section in config.sections():
+                if not section.startswith("provider."):
+                    continue
+                provider_id = section.removeprefix("provider.").strip()
+                if not PROVIDER_ID_PATTERN.fullmatch(provider_id):
+                    logger.warning(f"Skipping invalid provider section: {section}")
+                    continue
+                providers[provider_id] = _merge_provider(provider_id, catalog, config)
+            _providers_cache = providers
+        return _providers_cache
 
 
 def provider_names() -> list[str]:
@@ -269,7 +296,7 @@ def has_provider_credentials(provider: str, resolved: dict[str, Any] | None = No
 def has_api_or_oauth_credentials(provider: str, resolved: dict[str, Any] | None = None) -> bool:
     resolved = resolved or resolve_provider(provider)
     if resolved.get("auth_type") == "none":
-        return False
+        return True
     return has_provider_credentials(provider, resolved)
 
 

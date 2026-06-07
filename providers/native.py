@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
+
+logger = logging.getLogger("LLMMini")
 
 
 def _history_text(messages: list[dict]) -> str:
@@ -57,7 +60,7 @@ def _anthropic_message_content(content) -> str | list:
                                 }
                             })
                     except Exception as e:
-                        print(f"[LLM Mini] Failed to fetch image for Claude: {e}")
+                        logger.error(f"Failed to fetch image for Claude: {e}")
         return converted_list
     return str(content or "")
 
@@ -83,7 +86,7 @@ def list_anthropic_models(api_key: str, defaults: list[str], base_url: str = "")
                 merged.append(d)
         return merged or defaults
     except Exception as exc:
-        print(f"[LLM Mini] Claude model list failed: {exc}")
+        logger.error(f"Claude model list failed: {exc}")
         return defaults
 
 
@@ -143,10 +146,10 @@ def list_gemini_models(api_key: str, defaults: list[str], base_url: str = "") ->
                     merged.append(d)
             return merged or defaults
         except Exception as exc:
-            print(f"[LLM Mini] Gemini model list attempt {attempt + 1}/{max_retries} failed: {exc}")
+            logger.warning(f"Gemini model list attempt {attempt + 1}/{max_retries} failed: {exc}")
             if attempt < max_retries - 1:
                 time.sleep(2)
-    print("[LLM Mini] Gemini model list failed after all retries, using defaults.")
+    logger.error("Gemini model list failed after all retries, using defaults.")
     return defaults
 
 
@@ -183,7 +186,7 @@ def send_gemini_sdk_chat(api_key: str, model: str, messages: list[dict], tempera
                                 mime = res.headers.get("content-type", "image/png")
                                 parts.append(types.Part.from_bytes(data=res.content, mime_type=mime))
                         except Exception as e:
-                            print(f"[LLM Mini] Failed to fetch image for Gemini: {e}")
+                            logger.error(f"Failed to fetch image for Gemini: {e}")
         else:
             parts.append(types.Part.from_text(text=str(content_data)))
         contents.append(types.Content(role=role, parts=parts))

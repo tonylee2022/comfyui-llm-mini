@@ -23,24 +23,36 @@ Lightweight ComfyUI nodes for LLM provider access, personas, image generation, a
 
 ## Features
 
-- API Chat uses model lists saved by Provider Manager and does not add a refresh button to the chat node.
+- API Chat uses model lists saved by Provider Manager and can also refresh/configure the current provider model list directly from the chat node.
 - API Chat only lists chat providers with a valid API key or OAuth credential.
 - API key, environment variable, Codex OAuth, and xAI OAuth credential paths.
-- OpenAI-compatible, Claude, and Gemini chat providers.
+- OpenAI-compatible, Claude, Gemini, xAI, and Codex chat providers.
 - Persona `.txt` files as system prompt inputs.
 - Separate OpenAI and Codex image nodes with provider-scoped backend implementations.
 - xAI Imagine and xAI Video nodes.
-- API Chat strips Base64 images from output history by default to keep workflow files small, with an opt-in switch to retain them.
+- API Chat strips Base64 images from output history by default to keep workflow files small, with an opt-in `retain_images_in_history` switch to retain them.
 
 ## Configuration
 
-Copy `config.example.ini` to `config.ini`, then fill provider API keys or run:
+The recommended entry point is the `Provider Manager` node inside the ComfyUI canvas. Use it for API keys, OAuth authorization, model list management, and custom provider setup.
 
-```bash
-python oauth_login.py
-```
+### Provider Manager
 
-Codex and xAI both support two OAuth login flows:
+1. Add a `Provider Manager` node.
+2. Select an existing provider, or select `custom_provider` and enter a new Provider ID.
+3. Fill `Base URL`, `API Key`, and enable the chat/image/video capabilities you need.
+4. Click `Save Config`. API Chat only lists chat-capable providers with valid credentials.
+5. For Codex or xAI, use `Browser OAuth` or `Device Code OAuth` directly in the node. Device codes are shown in a popup where they can be copied into the authorization page.
+6. Click `Refresh & Configure Model List` to fetch available models, then select the models you want to keep. You can apply the selection temporarily to the current canvas or save it as the provider's static default list.
+7. Use `Custom Model ID` to add model names that are usable but not returned by the provider model-list endpoint.
+
+API Chat also includes the same model-list shortcut for the currently selected chat provider. Use Provider Manager for full provider creation, deletion, OAuth, and capability configuration.
+
+### File And CLI Fallbacks
+
+If you prefer manual configuration, copy `config.example.ini` to `config.ini` and fill provider API keys there.
+
+Codex and xAI OAuth also keep a command-line fallback:
 
 ```bash
 python oauth_login.py  # Default interactive mode, prompts for provider and flow
@@ -50,25 +62,22 @@ python oauth_login.py --provider xai --flow device
 python oauth_login.py --provider xai --flow browser
 ```
 
-Running without arguments prompts for both provider and login flow. `browser` is the browser login / local callback PKCE flow; `redirect` remains available as an alias.
+Running without arguments prompts for both provider and login flow. `device` is device-code authorization. `browser` is the browser login / local callback PKCE flow; `redirect` remains available as an alias. For normal use, prefer Provider Manager instead of running these commands manually.
 
-The `Credential Source` field selects the credential path. API key providers read `config.ini` first, then environment variables. OAuth providers use their saved token.
+API key providers read `config.ini` first, then environment variables. OAuth providers use their saved token.
 
 ### Custom Providers
 
-Keep `openai` for the official OpenAI endpoint. Put local proxies or third-party OpenAI-compatible services in their own named provider sections:
+Create custom providers from `Provider Manager`:
 
-```ini
-[provider.local_proxy]
-display_name = Local Proxy
-api_key = sk-...
-base_url = http://192.168.5.1:3000/api/
-```
+1. Select `custom_provider` in the `provider` menu.
+2. Enter a new Provider ID in `new_provider_id`.
+3. Fill the service `Base URL` and `API Key`.
+4. Select `Chat Backend`. Use `openai_compatible` for OpenAI-compatible APIs and `anthropic` for Anthropic-compatible APIs.
+5. Enable or disable `Chat`, `Image`, and `Video` according to the service capability.
+6. Click `Save Config`. The Provider ID will appear in the provider list; if `Chat` is enabled and credentials are valid, it will also appear in API Chat.
 
-Provider IDs must start with a letter or number, may contain only letters, numbers, dots, underscores, and hyphens, and are limited to 64 characters. Use `display_name` for a friendlier label.
-
-Restart ComfyUI and the chat node provider menu will show `local_proxy` separately from `openai`.
-For non-chat providers, set `supports_chat = false` so they do not appear in the API Chat node.
+Provider IDs must start with a letter or number, may contain only letters, numbers, dots, underscores, and hyphens, and are limited to 64 characters. Keep `openai` for the official OpenAI endpoint; do not overwrite it with third-party OpenAI-compatible services.
 
 ## Node Parameters
 
@@ -77,7 +86,7 @@ For non-chat providers, set `supports_chat = false` so they do not appear in the
 
 ### Google (Gemini) Authorization
 
-Google nodes use your Gemini API key. Put your free API key in the `[provider.google]` section of `config.ini`. Access all models (text/image/video).
+Google nodes use your Gemini API key. Put your free API key in the `[provider.google]` section of `config.ini`. Access all models (text/image).
 
 ## Attribution
 

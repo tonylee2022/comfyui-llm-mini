@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import re
 import time
+import logging
+
+logger = logging.getLogger("LLMMini")
 
 import requests
 
@@ -220,7 +223,7 @@ def _codex_image(api_key: str, image_model: str, prompt: str, size: str, quality
                     raise RuntimeError(f"Codex image rate limit still saturated after waiting {int(exc.retry_after)}s. Local cooldown started for 300s: {exc.error}") from exc
                 raise RuntimeError(f"Codex image rate limit exceeded after {max_attempts} attempts: {exc.error}") from exc
             delay = _codex_retry_delay(exc.retry_after, attempt)
-            print(f"[LLM Mini] Codex image rate limited; retrying in {delay:.2f}s ({attempt}/{max_attempts}).", flush=True)
+            logger.warning(f"Codex image rate limited; retrying in {delay:.2f}s ({attempt}/{max_attempts}).")
             interruptible_sleep(delay)
 
 

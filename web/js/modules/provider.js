@@ -1,7 +1,7 @@
 import { api } from "../../../../scripts/api.js";
 import { app } from "../../../../scripts/app.js";
 import { t, findWidget, updateCombo, fetchProviderInfo, refreshProviderWidgets } from "./utils.js";
-import { showModelSelectionModal } from "./modal.js";
+import { showModelSelectionModal, showDeviceAuthModal } from "./modal.js";
 
 const PROVIDER_ID_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,63}$/u;
 const CHAT_BACKENDS = ["openai_compatible", "anthropic"];
@@ -28,6 +28,7 @@ async function refreshAllApiChatNodes() {
 export async function setupProviderManager(node) {
   let currentProvidersData = [];
   let chatBackendConfigurable = true;
+  let activeDeviceAuthModal = null;
   const providerWidget = findWidget(node, "provider");
   const newProviderIdWidget = findWidget(node, "new_provider_id");
 
@@ -66,6 +67,10 @@ export async function setupProviderManager(node) {
       clearInterval(pollInterval);
       pollInterval = null;
     }
+    if (activeDeviceAuthModal) {
+      activeDeviceAuthModal.close();
+      activeDeviceAuthModal = null;
+    }
   }
 
   function startPollingStatus(provider, userCode, verificationUri) {
@@ -75,17 +80,24 @@ export async function setupProviderManager(node) {
         const response = await api.fetchApi(`/llm-mini/oauth/status?provider=${encodeURIComponent(provider)}`);
         if (!response.ok) return;
         const data = await response.json();
-        
+
         if (data.status === "pending") {
-          let codeText = userCode ? t(`\n🔑 Code: ${userCode}`, `\n🔑 验证码: ${userCode}`) : "";
-          let uriText = verificationUri ? t(`\n🔗 Link: ${verificationUri}`, `\n🔗 链接: ${verificationUri}`) : "";
-          let fallbackGuide = provider === "xai" ? t(
+          let codeText = userCode ? t(
+            "\nDevice code is shown in the authorization popup.",
+            "\n设备码已显示在授权弹窗中。"
+          ) : "";
+          let uriText = verificationUri && !userCode ? t(`\n🔗 Link: ${verificationUri}`, `\n🔗 链接: ${verificationUri}`) : "";
+          let fallbackGuide = provider === "xai" && !userCode ? t(
             `\n⚠️ If "Connection Failed" shows in browser, visit:\nhttp://127.0.0.1:56121/callback?code=[PasteCodeHere]`,
             `\n⚠️ 若网页提示“无法建立连接”，可手动访问:\nhttp://127.0.0.1:56121/callback?code=[您复制的授权码]`
           ) : "";
-          statusWidget.value = t(
-            `⏱️ Waiting for authentication...${codeText}${uriText}${fallbackGuide}\nExpires in: ${data.expires_in}s`,
-            `⏱️ 等待网页授权中...${codeText}${uriText}${fallbackGuide}\n剩余过期时间: ${data.expires_in}秒`
+          let errorText = data.error ? `\n❌ ${data.error}` : "";
+          statusWidget.value = userCode ? t(
+            `⏱️ Waiting for device authentication...${codeText}${errorText}\nExpires in: ${data.expires_in}s`,
+            `⏱️ 等待设备授权中...${codeText}${errorText}\n剩余过期时间: ${data.expires_in}秒`
+          ) : t(
+            `⏱️ Waiting for authentication...${uriText}${fallbackGuide}${errorText}\nExpires in: ${data.expires_in}s`,
+            `⏱️ 等待网页授权中...${uriText}${fallbackGuide}${errorText}\n剩余过期时间: ${data.expires_in}秒`
           );
           node.setDirtyCanvas(true, true);
         } else if (data.status === "success") {
@@ -388,6 +400,8 @@ export async function setupProviderManager(node) {
     statusWidget.value = t("Starting Browser OAuth...", "正在启动网页授权...");
     node.setDirtyCanvas(true, true);
 
+    const authWindow = window.open("about:blank", "_blank");
+
     try {
       const response = await api.fetchApi("/llm-mini/oauth/start", {
         method: "POST",
@@ -403,12 +417,17 @@ export async function setupProviderManager(node) {
           `🔗 正在拉起浏览器...\n请在浏览器中进行授权绑定。\n如未自动打开，请手动访问: ${data.verification_uri}`
         );
         node.setDirtyCanvas(true, true);
-        window.open(data.verification_uri, "_blank");
+        if (authWindow) {
+          authWindow.location.href = data.verification_uri;
+        } else {
+          window.open(data.verification_uri, "_blank");
+        }
         startPollingStatus(provider, null, data.verification_uri);
       } else {
         throw new Error("No verification URI returned.");
       }
     } catch (err) {
+      if (authWindow) authWindow.close();
       alert(`OAuth failed: ${err.message}`);
       statusWidget.value = t(`OAuth failed: ${err.message}`, `授权启动失败: ${err.message}`);
       node.setDirtyCanvas(true, true);
@@ -426,6 +445,8 @@ export async function setupProviderManager(node) {
     statusWidget.value = t("Starting Device OAuth...", "正在启动设备码授权...");
     node.setDirtyCanvas(true, true);
 
+    const authWindow = window.open("about:blank", "_blank");
+
     try {
       const response = await api.fetchApi("/llm-mini/oauth/start", {
         method: "POST",
@@ -436,34 +457,33 @@ export async function setupProviderManager(node) {
       if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
 
       if (data.user_code && data.verification_uri) {
-        if (navigator.clipboard) {
-          try {
-            await navigator.clipboard.writeText(data.user_code);
-          } catch (clipErr) {
-            console.warn("Failed to copy user_code:", clipErr);
-          }
-        }
-        
         statusWidget.value = t(
-          `🔑 Verification Code: ${data.user_code}\n(Copied to clipboard!)\n🔗 Opening page...`,
-          `🔑 验证码: ${data.user_code}\n(已自动复制到剪贴板！)\n🔗 正在打开页面...`
+          "Waiting for device authentication...\nThe device code is in the popup.\nOpening authorization page...",
+          "等待设备授权中...\n设备码在弹窗中。\n正在打开授权页面..."
         );
         node.setDirtyCanvas(true, true);
-        
-        // 关键：先执行 window.open 打开网页，避免被 alert 阻塞中断用户点击交互流而导致被浏览器弹窗拦截器拦截
-        window.open(data.verification_uri, "_blank");
-        
-        // 双重保障提示，即使网页被拦截，也可以手动复制看板中即将展示的链接
-        alert(t(
-          `Device Verification Code: ${data.user_code}\n\nThe code has been copied to your clipboard.\nClick OK to continue (if the page did not open, you can copy the authorization link from the status box).`,
-          `设备授权验证码: ${data.user_code}\n\n验证码已自动复制到您的剪贴板。\n点击“确定”继续。（如果浏览器未自动打开，您可以手动复制并访问状态看板上显示的授权链接）。`
-        ));
-        
+
+        if (authWindow) {
+          authWindow.location.href = data.verification_uri;
+        } else {
+          window.open(data.verification_uri, "_blank");
+        }
+
         startPollingStatus(provider, data.user_code, data.verification_uri);
+
+        activeDeviceAuthModal = showDeviceAuthModal(
+          provider,
+          data.user_code,
+          data.verification_uri,
+          () => {
+            activeDeviceAuthModal = null;
+          }
+        );
       } else {
         throw new Error("Invalid response from device OAuth start.");
       }
     } catch (err) {
+      if (authWindow) authWindow.close();
       alert(`OAuth failed: ${err.message}`);
       statusWidget.value = t(`OAuth failed: ${err.message}`, `授权启动失败: ${err.message}`);
       node.setDirtyCanvas(true, true);

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+import logging
+
+logger = logging.getLogger("LLMMini")
 
 import requests
 
@@ -123,7 +126,7 @@ def delete_xai_file(file_id: str, api_key: str, base_url: str) -> None:
         response = requests.delete(url, headers={"Authorization": f"Bearer {api_key}"}, timeout=30)
         log_http_response("DELETE", url, response)
     except Exception as e:
-        print(f"[LLM Mini] Failed to delete xAI file {file_id}: {e}")
+        logger.error(f"Failed to delete xAI file {file_id}: {e}")
 
 
 def poll_video(request_id: str, base_url: str, api_key: str, status_updater=None) -> str:

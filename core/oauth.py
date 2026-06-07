@@ -6,6 +6,9 @@ import hashlib
 import secrets
 import threading
 import time
+import logging
+
+logger = logging.getLogger("LLMMini")
 import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -237,12 +240,12 @@ def refresh_oauth_token(provider: str) -> str | None:
         payload["client_secret"] = client_secret
     response = requests.post(token_url, data=payload, timeout=20)
     if response.status_code != 200:
-        print(f"[LLM Mini] OAuth refresh failed for {provider}: HTTP {response.status_code} {response.text}")
+        logger.error(f"OAuth refresh failed for {provider}: HTTP {response.status_code} {response.text}")
         return None
     token_data = response.json()
     access_token = token_data.get("access_token") or token_data.get("accessToken")
     if not access_token:
-        print(f"[LLM Mini] OAuth refresh failed for {provider}: response did not include access_token")
+        logger.error(f"OAuth refresh failed for {provider}: response did not include access_token")
         return None
     write_tokens(provider, client_id, client_secret, token_data, token_url, fallback_refresh_token=refresh_token)
     return access_token
@@ -301,7 +304,7 @@ def run_redirect_flow(provider: str, custom_client_id: str = "", custom_client_s
     client_secret = custom_client_secret or creds["client_secret"]
     port = 56121 if provider == "xai" else 1455
     redirect_uri = f"http://127.0.0.1:{port}/callback" if provider == "xai" else "http://localhost:1455/auth/callback"
-    server = HTTPServer(("0.0.0.0", port), CallbackHandler)
+    server = HTTPServer(("127.0.0.1", port), CallbackHandler)
     server.auth_code = None
     server.auth_state = None
     verifier, challenge = generate_pkce_pair()
@@ -478,7 +481,7 @@ def cancel_oauth_flow(provider: str, reason: str = "User cancelled the authoriza
         try:
             server.shutdown()
         except Exception as exc:
-            print(f"[LLM Mini] Failed to shutdown OAuth server for {provider}: {exc}")
+            logger.error(f"Failed to shutdown OAuth server for {provider}: {exc}")
 
 
 def start_async_oauth_flow(provider: str, flow_type: str) -> dict:
@@ -595,7 +598,7 @@ def _start_async_browser_flow(provider: str) -> dict:
     port = 56121 if provider == "xai" else 1455
     redirect_uri = f"http://127.0.0.1:{port}/callback" if provider == "xai" else "http://localhost:1455/auth/callback"
     
-    server = HTTPServer(("0.0.0.0", port), CallbackHandler)
+    server = HTTPServer(("127.0.0.1", port), CallbackHandler)
     server.auth_code = None
     server.auth_state = None
     _register_oauth_server(provider, server)

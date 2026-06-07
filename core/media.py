@@ -4,6 +4,9 @@ import base64
 import io
 import os
 import threading
+import logging
+
+logger = logging.getLogger("LLMMini")
 from pathlib import Path
 from uuid import uuid4
 
@@ -143,7 +146,7 @@ def transcode_to_h264_mp4(input_path: str) -> str:
         subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
         return str(output_path)
     except Exception as e:
-        print(f"[LLM Mini] ffmpeg transcoding failed, falling back to original: {e}")
+        logger.error(f"ffmpeg transcoding failed, falling back to original: {e}")
         cleanup_upload_temp_file(str(output_path))
         return input_path
 
@@ -183,7 +186,7 @@ def get_video_path_from_input(video_input) -> str | None:
             raw_path = str(path)
         except Exception as e:
             cleanup_upload_temp_file(str(path) if path else None)
-            print(f"[LLM Mini] Failed to save video via save_to: {e}")
+            logger.error(f"Failed to save video via save_to: {e}")
 
     # 尝试 get_stream_source 方法
     if not raw_path and hasattr(video_input, "get_stream_source"):
@@ -241,7 +244,7 @@ def cleanup_upload_temp_file(path: str | None) -> None:
     try:
         candidate.unlink(missing_ok=True)
     except OSError as exc:
-        print(f"[LLM Mini] Failed to remove upload temp file {candidate}: {exc}")
+        logger.error(f"Failed to remove upload temp file {candidate}: {exc}")
 
 
 def download_video_to_comfy(url: str):
@@ -267,3 +270,35 @@ def download_video_to_comfy(url: str):
         return InputImpl.VideoFromFile(str(path)), str(path)
     except Exception:
         return {"video": [{"filename": filename, "subfolder": "", "type": folder_type}]}, str(path)
+
+
+def cleanup_legacy_temp_files() -> None:
+    import time
+    try:
+        import tempfile
+        try:
+            import folder_paths
+            out_dir = Path(folder_paths.get_temp_directory())
+        except Exception:
+            out_dir = Path(tempfile.gettempdir())
+        
+        dirs_to_check = [out_dir]
+        pkg_video_temp = Path(__file__).resolve().parents[1] / "video_temp"
+        if pkg_video_temp.exists():
+            dirs_to_check.append(pkg_video_temp)
+            
+        now = time.time()
+        for d in dirs_to_check:
+            if not d.exists():
+                continue
+            for p in d.glob("llm-mini-video-*"):
+                try:
+                    if p.is_file() and (now - p.stat().st_mtime > 7200):
+                        p.unlink(missing_ok=True)
+                except OSError as e:
+                    logger.debug(f"Failed to auto-clean legacy temp file {p}: {e}")
+    except Exception as e:
+        logger.debug(f"Auto-cleanup failed: {e}")
+
+
+threading.Thread(target=cleanup_legacy_temp_files, daemon=True).start()

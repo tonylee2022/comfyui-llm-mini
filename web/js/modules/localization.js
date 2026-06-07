@@ -96,22 +96,52 @@ export function localizeVueNodeDef(nodeDef) {
   }
 }
 
+const pendingNodes = new Set();
+let localizationScheduled = false;
+
 export function scheduleLocalization(node, delay = 20) {
-  const previous = localizationTimers.get(node);
-  if (previous) clearTimeout(previous);
-  const timer = setTimeout(() => {
-    localizationTimers.delete(node);
-    const apply = () => applyLocalization(node);
+  if (!node) return;
+  pendingNodes.add(node);
+
+  if (localizationScheduled) return;
+  localizationScheduled = true;
+
+  setTimeout(() => {
+    localizationScheduled = false;
+    const nodesToProcess = Array.from(pendingNodes);
+    pendingNodes.clear();
+
+    const apply = () => {
+      let anyChangedGlobal = false;
+      nodesToProcess.forEach((n) => {
+        if (n) {
+          const changed = applyLocalizationDirect(n);
+          if (changed) anyChangedGlobal = true;
+        }
+      });
+
+      if (anyChangedGlobal) {
+        const firstWithGraph = nodesToProcess.find((n) => n && n.graph);
+        if (firstWithGraph && firstWithGraph.graph && typeof firstWithGraph.graph.setDirtyCanvas === "function") {
+          firstWithGraph.graph.setDirtyCanvas(true, true);
+        } else {
+          const firstWithCanvas = nodesToProcess.find((n) => n && typeof n.setDirtyCanvas === "function");
+          if (firstWithCanvas) {
+            firstWithCanvas.setDirtyCanvas(true, true);
+          }
+        }
+      }
+    };
+
     if (typeof requestAnimationFrame === "function") {
       requestAnimationFrame(apply);
     } else {
       apply();
     }
   }, delay);
-  localizationTimers.set(node, timer);
 }
 
-export function applyLocalization(node) {
+export function applyLocalizationDirect(node) {
   let anyChanged = false;
 
   if (node.inputs) {
@@ -132,6 +162,11 @@ export function applyLocalization(node) {
     });
   }
 
+  return anyChanged;
+}
+
+export function applyLocalization(node) {
+  const anyChanged = applyLocalizationDirect(node);
   if (anyChanged) {
     if (typeof node.setDirtyCanvas === "function") {
       node.setDirtyCanvas(true, true);
