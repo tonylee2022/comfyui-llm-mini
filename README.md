@@ -20,6 +20,11 @@
    pip install -r requirements.txt
    ```
    *注意：如果使用的是 ComfyUI 独立便携版本（Portable），请使用其内部 Python 解释器安装，例如运行：`..\..\..\python_embeded\python.exe -m pip install -r requirements.txt`。*
+4. 复制示例配置文件为 `config.ini`：
+   ```bash
+   cp config.example.ini config.ini
+   ```
+   *(Windows 系统请使用 `copy config.example.ini config.ini`)*
 
 ## 功能
 
@@ -30,6 +35,7 @@
 - 支持 `persona/*.txt` 人格面具作为系统提示词。
 - OpenAI 与 Codex 图像使用独立节点，后端按提供商拆分。
 - 支持 xAI Imagine 与 xAI Video。
+- 支持 Google Veo 2、Veo 3 以及 Veo 3 首尾帧视频生成。
 - API Chat 默认从输出历史中移除 Base64 图像，避免工作流文件过大；可通过节点上的 `retain_images_in_history` 参数开关选择保留。
 
 ## 配置
@@ -84,9 +90,10 @@ Provider ID 必须以字母或数字开头，只能包含字母、数字、点�
 - OpenAI Image 与 Codex Image 的 `model_name` 都表示 GPT Image 图像模型；Codex 后端固定使用 `gpt-5.5` 作为 Responses API 主模型，并把图像模型、尺寸、质量和背景传给 `image_generation` 工具。
 - OpenAI/Codex 与 xAI 节点中标注为缓存控制的 `seed` 只用于触发重新执行，不会发送给对应 API。
 
-### Google (Gemini) 授权配置
+### Google (Gemini & Veo) 授权与视频生成
 
-Google 节点使用 API Key 凭据。在 `config.ini` 中填入免费申请的 API 密匙。支持全部生图和聊天模型。
+- **授权配置**：Google 节点使用 API Key 凭据。在 `config.ini` 中填入免费申请的 API 密钥。支持全部生图和聊天模型。
+- **Google Veo 视频生成**：支持 **Google Veo 2 视频生成**、**Google Veo 3 视频生成** 和 **Google Veo 3 首尾帧视频生成**（通过插值开始和结束参考图生成中间过渡视频）。注意：由于 Gemini API 的接口限制，不支持 `generate_audio` 与 `enhance_prompt` 音画控制参数（后台默认自动启用推荐选项）。
 
 ## 署名
 

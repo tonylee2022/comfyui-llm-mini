@@ -20,6 +20,11 @@ Lightweight ComfyUI nodes for LLM provider access, personas, image generation, a
    pip install -r requirements.txt
    ```
    *Note: If you are using the ComfyUI Portable version, please install using the embedded Python, e.g.: `..\..\..\python_embeded\python.exe -m pip install -r requirements.txt`.*
+4. Copy the example configuration file to `config.ini`:
+   ```bash
+   cp config.example.ini config.ini
+   ```
+   *(For Windows systems, use `copy config.example.ini config.ini`)*
 
 ## Features
 
@@ -30,6 +35,7 @@ Lightweight ComfyUI nodes for LLM provider access, personas, image generation, a
 - Persona `.txt` files as system prompt inputs.
 - Separate OpenAI and Codex image nodes with provider-scoped backend implementations.
 - xAI Imagine and xAI Video nodes.
+- Google Veo 2, Veo 3, and Veo 3 First-Last-Frame video generation nodes.
 - API Chat strips Base64 images from output history by default to keep workflow files small, with an opt-in `retain_images_in_history` switch to retain them.
 
 ## Configuration
@@ -84,9 +90,10 @@ Provider IDs must start with a letter or number, may contain only letters, numbe
 - In the OpenAI Image and Codex Image nodes, `model_name` means the GPT Image model. The Codex backend uses `gpt-5.5` internally as the Responses API main model and passes the image model, size, quality, and background to the `image_generation` tool.
 - `seed` inputs marked as cache controls on OpenAI/Codex and xAI nodes trigger re-execution but are not sent to those APIs.
 
-### Google (Gemini) Authorization
+### Google (Gemini & Veo) Authorization & Video Generation
 
-Google nodes use your Gemini API key. Put your free API key in the `[provider.google]` section of `config.ini`. Access all models (text/image).
+- **Authorization**: Google nodes use your Gemini API key. Put your free API key in the `[provider.google]` section of `config.ini` to access all text/image generation models.
+- **Google Veo Video Generation**: Supports **Google Veo 2 Video Generation**, **Google Veo 3 Video Generation**, and **Google Veo 3 First-Last-Frame** (generates transitional videos by interpolating start and end reference frames). Note: Due to Gemini API limits, `generate_audio` and `enhance_prompt` parameters are not configurable on Veo 3 nodes (defaults are automatically used internally).
 
 ## Attribution
 
