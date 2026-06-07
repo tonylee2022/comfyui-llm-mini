@@ -110,7 +110,7 @@ class OpenAIImageNode(IO.ComfyNode):
                 return (res[0],)
         except Exception as exc:
             format_error("OpenAI image", exc)
-            return (error_image(),)
+            raise exc
 
 
 NODE_CLASS_MAPPINGS = {

@@ -22,7 +22,7 @@ export function setupNodeByType(node, nodeName) {
     node.size = [250, node.computeSize()[1]];
   }
 
-  if (/Video/.test(nodeName)) {
+  if (/Video/.test(nodeName) || /FirstLastFrame/.test(nodeName)) {
     node.size = [300, node.computeSize()[1]];
   }
 

@@ -285,7 +285,7 @@ class CodexImageNode(IO.ComfyNode):
                 return (res[0],)
         except Exception as exc:
             format_error("Codex image", exc)
-            return (error_image(),)
+            raise exc
 
 
 NODE_CLASS_MAPPINGS = {

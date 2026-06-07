@@ -299,7 +299,7 @@ class GoogleImagenNode(IO.ComfyNode):
                 return (res,)
         except Exception as exc:
             format_error("Google Imagen", exc)
-            return (error_image(),)
+            raise exc
 
 
 class BaseGeminiImageNode(IO.ComfyNode):
@@ -342,7 +342,7 @@ class BaseGeminiImageNode(IO.ComfyNode):
                 return (res_image, res_text)
         except Exception as exc:
             format_error(node_name, exc)
-            return (error_image(), str(exc))
+            raise exc
 
 
 class GoogleGeminiNanoBananaNode(BaseGeminiImageNode):

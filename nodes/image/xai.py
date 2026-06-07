@@ -10,7 +10,7 @@ from ...core.interrupt import check_interrupted
 from ...core.media import tensor_to_data_uri
 from ...core.status import StatusUpdater, get_unique_id
 from ...core.xai import _parse_xai_error, xai_credentials
-from ._shared import error_image, format_error, image_sources_to_batch, image_tensors_from_input
+from ._shared import error_image, format_error, image_sources_to_batch, image_tensors_from_input, r18_image, is_safety_error
 
 
 XAI_IMAGE_MODELS = ["grok-imagine-image-quality", "grok-imagine-image"]
@@ -114,7 +114,7 @@ class XAIImagineNode(IO.ComfyNode):
                 return (res[0],)
         except Exception as exc:
             format_error("xAI image", exc)
-            return (error_image(),)
+            raise exc
 
 
 class XAIImageEditNode(IO.ComfyNode):
@@ -162,7 +162,7 @@ class XAIImageEditNode(IO.ComfyNode):
                 return (res[0],)
         except Exception as exc:
             format_error("xAI image edit", exc)
-            return (error_image(),)
+            raise exc
 
 
 NODE_CLASS_MAPPINGS = {
