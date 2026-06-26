@@ -167,7 +167,7 @@ class XAIVideoNode(IO.ComfyNode):
             category="ComfyUI LLM Mini/Video/xAI",
             inputs=[
                 IO.String.Input("prompt", multiline=True, default=""),
-                IO.Combo.Input("model_name", options=["grok-imagine-video", "grok-imagine-video-1.5-preview"], default="grok-imagine-video"),
+                IO.Combo.Input("model_name", options=["grok-imagine-video", "grok-imagine-video-1.5"], default="grok-imagine-video"),
                 IO.Combo.Input("aspect_ratio", options=["auto", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16"], default="auto"),
                 IO.Combo.Input("resolution", options=["720p", "480p"], default="720p"),
                 IO.Int.Input("duration", default=6, min=1, max=15, step=1),
