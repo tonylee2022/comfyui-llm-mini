@@ -13,6 +13,58 @@ def _chat_fingerprint(is_locked=True):
     return "locked" if is_locked else uuid4().hex
 
 
+TRANSLATION_SOURCE_LANGUAGES = [
+    "Auto detect",
+    "Chinese",
+    "English",
+    "Japanese",
+    "Korean",
+    "French",
+    "German",
+    "Spanish",
+    "Portuguese",
+    "Italian",
+    "Russian",
+    "Arabic",
+    "Thai",
+    "Vietnamese",
+]
+TRANSLATION_TARGET_LANGUAGES = TRANSLATION_SOURCE_LANGUAGES[1:]
+TRANSLATION_TONES = [
+    "Preserve original",
+    "Natural",
+    "Formal",
+    "Conversational",
+    "Professional",
+    "Concise",
+    "Literary",
+]
+TRANSLATION_SYSTEM_PROMPT = """你是一个翻译专家，请将我的输入从 {source_language} 翻译成 {target_language}，语气为 {tone}，语气程度为 {tone_degree}。
+语气程度最大为 10，最小为 0。数字越大，目标语气越明显；当语气程度为 0 时，尽量保持原文语气，当语气程度为 10 时，强烈体现目标语气。
+如果 {source_language} 和 {target_language} 相同，也要根据语气要求调整文本，而不是直接返回原内容。
+不要复述原文或输出解释、标题及其他无关内容，只返回翻译后的内容。输入包含 Markdown、HTML 或其他排版格式时，必须保留原格式。
+
+处理 Markdown 和 HTML 时遵守以下规则：
+1. 保留 Markdown 结构和排版。
+2. Markdown 超链接的 `[]` 中可见文字必须翻译，`()` 中的链接地址必须保持原样。
+3. 保留 HTML 标签、属性和结构；翻译页面中可见的文字，不得翻译链接地址或标签属性值。
+"""
+
+
+def _render_translation_prompt(
+    source_language: str,
+    target_language: str,
+    tone: str,
+    tone_degree: int,
+) -> str:
+    return TRANSLATION_SYSTEM_PROMPT.format(
+        source_language=source_language,
+        target_language=target_language,
+        tone=tone,
+        tone_degree=max(0, min(10, int(tone_degree))),
+    )
+
+
 class ApiChatNode(IO.ComfyNode):
     @classmethod
     def define_schema(cls):
@@ -128,6 +180,79 @@ class PersonaNode:
 
     def load(self, persona_name, text=None):
         return (load_persona_text(persona_name, text),)
+
+
+class TranslationNode(IO.ComfyNode):
+    @classmethod
+    def define_schema(cls):
+        providers = chat_provider_names()
+        default_provider = providers[0] if providers else ""
+        default_models = (resolve_provider(default_provider).get("default_models") or [""]) if default_provider else [""]
+        return IO.Schema(
+            node_id="LLMMiniTranslation",
+            display_name="Translation",
+            category="ComfyUI LLM Mini/Translation",
+            inputs=[
+                IO.String.Input("text", multiline=True, default=""),
+                IO.Combo.Input("source_language", options=TRANSLATION_SOURCE_LANGUAGES, default=TRANSLATION_SOURCE_LANGUAGES[0]),
+                IO.Combo.Input("target_language", options=TRANSLATION_TARGET_LANGUAGES, default="Chinese"),
+                IO.Combo.Input("tone", options=TRANSLATION_TONES, default=TRANSLATION_TONES[0]),
+                IO.Int.Input("tone_degree", default=0, min=0, max=10, step=1),
+                IO.Combo.Input("provider", options=providers, default=default_provider),
+                IO.Combo.Input("model_name", options=default_models, default=default_models[0]),
+                IO.Boolean.Input("is_locked", default=True),
+            ],
+            outputs=[IO.String.Output("text")],
+            hidden=[IO.Hidden.unique_id],
+        )
+
+    @classmethod
+    def validate_inputs(cls, model_name=None, **kwargs):
+        return True
+
+    @classmethod
+    def fingerprint_inputs(cls, is_locked=True, **kwargs):
+        return _chat_fingerprint(is_locked)
+
+    @classmethod
+    def execute(
+        cls,
+        text,
+        source_language,
+        target_language,
+        tone,
+        tone_degree,
+        provider,
+        model_name,
+        is_locked=True,
+        unique_id=None,
+    ):
+        node_id = get_unique_id(cls, unique_id)
+        try:
+            with StatusUpdater(node_id, f"Translating ({provider})"):
+                info = resolve_provider(provider)
+                selected_model = model_name if model_name != "click Refresh Models" else (info.get("default_models") or [""])[0]
+                system_prompt = _render_translation_prompt(
+                    source_language=source_language,
+                    target_language=target_language,
+                    tone=tone,
+                    tone_degree=tone_degree,
+                )
+                client = ApiChatClient(
+                    provider=provider,
+                    model_name=selected_model,
+                    api_key=info.get("api_key", ""),
+                    base_url=info.get("base_url", ""),
+                )
+                response, _, _ = client.send(
+                    user_prompt=text,
+                    system_prompt=system_prompt,
+                    temperature=0.2,
+                    max_tokens=8192,
+                )
+                return IO.NodeOutput(response)
+        except Exception as exc:
+            raise RuntimeError(f"LLM Mini translation request failed: {exc}")
 
 
 class PersonaManagerNode:

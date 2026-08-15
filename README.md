@@ -33,6 +33,7 @@
 - 支持 API Key、环境变量、Codex OAuth、xAI OAuth 凭据路径。
 - 支持 OpenAI-compatible、Claude、Gemini、xAI 和 Codex 聊天接口。
 - 支持 `persona/*.txt` 人格面具作为系统提示词。
+- 提供独立的“翻译”节点，可选择提供商、模型、输入语言、输出语言、语气和语气程度。
 - OpenAI 与 Codex 图像使用独立节点，后端按提供商拆分。
 - 支持 xAI Imagine 与 xAI Video。
 - 支持 Google Veo 2、Veo 3 以及 Veo 3 首尾帧视频生成。
@@ -87,6 +88,7 @@ Provider ID 必须以字母或数字开头，只能包含字母、数字、点�
 
 ## 节点参数说明
 
+- `翻译`节点直接接收和输出文本，使用已配置的聊天提供商完成翻译。切换提供商时，模型列表会联动切换为该提供商在插件配置中的默认模型，不会请求远程模型列表。输入语言可选择自动检测，节点名称和语言下拉选项只跟随 ComfyUI 前端语言设置。
 - OpenAI Image 与 Codex Image 的 `model_name` 都表示 GPT Image 图像模型；Codex 后端固定使用 `gpt-5.5` 作为 Responses API 主模型，并把图像模型、尺寸、质量和背景传给 `image_generation` 工具。
 - OpenAI/Codex 与 xAI 节点中标注为缓存控制的 `seed` 只用于触发重新执行，不会发送给对应 API。
 

@@ -1,12 +1,8 @@
 import { api } from "../../../../scripts/api.js";
+import { app } from "../../../../scripts/app.js";
 
 export function currentLocale() {
-  return localStorage["AGL.Locale"] || 
-         localStorage["Comfy.Settings.AGL.Locale"] || 
-         localStorage["Comfy.Locale"] || 
-         localStorage["Comfy.Settings.Comfy.Locale"] || 
-         navigator.language || 
-         "en-US";
+  return app.ui?.settings?.getSettingValue?.("Comfy.Locale") || "en";
 }
 
 export function isChineseLocale() {

@@ -45,6 +45,23 @@ export function setupNodeByType(node, nodeName) {
       };
     }
   }
+
+  if (nodeName === "LLMMiniTranslation") {
+    const sourceLanguages = t(
+      ["Auto detect", "Chinese", "English", "Japanese", "Korean", "French", "German", "Spanish", "Portuguese", "Italian", "Russian", "Arabic", "Thai", "Vietnamese"],
+      ["自动检测", "中文", "英语", "日语", "韩语", "法语", "德语", "西班牙语", "葡萄牙语", "意大利语", "俄语", "阿拉伯语", "泰语", "越南语"]
+    );
+    const targetLanguages = sourceLanguages.slice(1);
+    const tones = t(
+      ["Preserve original", "Natural", "Formal", "Conversational", "Professional", "Concise", "Literary"],
+      ["保持原文", "自然", "正式", "口语", "专业", "简洁", "文学"]
+    );
+    updateCombo(node, "source_language", sourceLanguages);
+    updateCombo(node, "target_language", targetLanguages);
+    updateCombo(node, "tone", tones);
+    node.size = [300, node.computeSize()[1]];
+    setTimeout(() => refreshProviderWidgets(node), 50);
+  }
   
   if (nodeName === "LLMMiniPersonaManager") {
     setupPersonaManager(node);

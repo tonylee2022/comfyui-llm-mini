@@ -32,6 +32,22 @@
       "0": { "name": "系统提示词输入" }
     }
   },
+  "LLMMiniTranslation": {
+    "display_name": "翻译",
+    "inputs": {
+      "text": { "name": "文本", "tooltip": "输入待翻译文本。" },
+      "source_language": { "name": "输入语言", "tooltip": "选择原文语言；不确定时使用自动检测。" },
+      "target_language": { "name": "输出语言", "tooltip": "选择译文语言。" },
+      "tone": { "name": "语气" },
+      "tone_degree": { "name": "语气程度", "tooltip": "0 尽量保持原文语气，10 强烈采用指定语气。" },
+      "provider": { "name": "提供商" },
+      "model_name": { "name": "模型" },
+      "is_locked": { "name": "锁定缓存", "tooltip": "开启时相同输入不会重复执行；关闭时每次都会重新请求。" }
+    },
+    "outputs": {
+      "0": { "name": "文本" }
+    }
+  },
   "LLMMiniOpenAIImage": {
     "display_name": "OpenAI 图像",
     "inputs": {

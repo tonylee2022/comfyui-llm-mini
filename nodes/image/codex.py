@@ -120,7 +120,15 @@ def _codex_retry_delay(retry_after: float, attempt: int) -> float:
 
 
 CODEX_RESPONSES_MODEL = "gpt-5.5"
+CODEX_ERROR_TEXT_MAX_CHARS = 1000
 _CODEX_IMAGE_COOLDOWN_UNTIL = 0.0
+
+
+def _format_codex_error_text(chunks: list[str]) -> str:
+    text = re.sub(r"\s+", " ", "".join(chunks)).strip()
+    if len(text) <= CODEX_ERROR_TEXT_MAX_CHARS:
+        return text
+    return text[:CODEX_ERROR_TEXT_MAX_CHARS].rstrip() + "..."
 
 
 def _codex_image_once(api_key: str, image_model: str, prompt: str, size: str, quality: str, background: str, image_tensors: list):
@@ -178,7 +186,13 @@ def _codex_image_once(api_key: str, image_model: str, prompt: str, size: str, qu
         if event_type and event_type not in event_types:
             event_types.append(event_type)
         if event_type in {"response.output_text.delta", "response.text.delta"}:
-            text_chunks.append(event.get("delta") or event.get("text") or "")
+            text = event.get("delta") or event.get("text")
+            if isinstance(text, str):
+                text_chunks.append(text)
+        elif event_type in {"response.output_text.done", "response.text.done"} and not text_chunks:
+            text = event.get("text")
+            if isinstance(text, str):
+                text_chunks.append(text)
         if event_type in {"response.failed", "response.error", "error"}:
             error = event.get("error") or event
             if _is_rate_limit_error(error):
@@ -194,10 +208,10 @@ def _codex_image_once(api_key: str, image_model: str, prompt: str, size: str, qu
     if not images and partial_images:
         images = partial_images
     if not images:
-        details = ", ".join(event_types[:8]) or "no stream events"
-        text = "".join(text_chunks).strip()
+        text = _format_codex_error_text(text_chunks)
         if text:
-            details += f"; text: {text[:300]}"
+            raise RuntimeError(f"Codex image generation failed: {text}")
+        details = ", ".join(event_types[:8]) or "no stream events"
         raise RuntimeError(f"Codex image response did not contain image data. Stream events: {details}")
     tensor_batch, sources = image_sources_to_batch(images)
     return tensor_batch, sources[0]
