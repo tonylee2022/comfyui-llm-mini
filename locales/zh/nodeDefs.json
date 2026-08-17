@@ -89,7 +89,8 @@
       "resolution": { "name": "分辨率" },
       "mime_type": { "name": "输出格式", "tooltip": "生成图像的 MIME 类型，默认 image/png。" },
       "n": { "name": "数量", "tooltip": "生成图像数量，范围 1-10。" },
-      "seed": { "name": "随机种", "tooltip": "仅用于缓存和重新执行控制，不会发送给 xAI。" }
+      "seed": { "name": "随机种", "tooltip": "仅用于缓存和重新执行控制，不会发送给 xAI。" },
+      "quality": { "name": "质量", "tooltip": "grok-imagine-image-2.0 的生成质量；旧模型会忽略此参数。" }
     },
     "outputs": {
       "0": { "name": "图像" }
@@ -105,6 +106,7 @@
       "mime_type": { "name": "输出格式", "tooltip": "生成图像的 MIME 类型，默认 image/png。" },
       "n": { "name": "数量", "tooltip": "生成图像数量，范围 1-10。" },
       "seed": { "name": "随机种", "tooltip": "仅用于缓存和重新执行控制，不会发送给 xAI。" },
+      "quality": { "name": "质量", "tooltip": "为 grok-imagine-image-2.0 预留；xAI 当前编辑文档未定义该参数，因此不会发送。" },
       "images": { "name": "源图像", "tooltip": "图像编辑源图，至少 1 张，最多 3 张。" }
     },
     "outputs": {

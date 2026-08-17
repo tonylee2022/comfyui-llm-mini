@@ -90,6 +90,7 @@ Provider ID 必须以字母或数字开头，只能包含字母、数字、点�
 
 - `翻译`节点直接接收和输出文本，使用已配置的聊天提供商完成翻译。切换提供商时，模型列表会联动切换为该提供商在插件配置中的默认模型，不会请求远程模型列表。输入语言可选择自动检测，节点名称和语言下拉选项只跟随 ComfyUI 前端语言设置。
 - OpenAI Image 与 Codex Image 的 `model_name` 都表示 GPT Image 图像模型；Codex 后端固定使用 `gpt-5.5` 作为 Responses API 主模型，并把图像模型、尺寸、质量和背景传给 `image_generation` 工具。
+- xAI 图像节点默认使用 `grok-imagine-image-2.0`，并保留 `grok-imagine-image-quality` 与 `grok-imagine-image`。2.0 图像生成支持 `medium`（默认）和 `low` 质量；xAI 当前编辑文档未定义 `quality` 参数，因此编辑节点暂不发送该值。
 - OpenAI/Codex 与 xAI 节点中标注为缓存控制的 `seed` 只用于触发重新执行，不会发送给对应 API。
 
 ### Google (Gemini & Veo) 授权与视频生成

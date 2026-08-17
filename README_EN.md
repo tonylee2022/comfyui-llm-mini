@@ -90,6 +90,7 @@ Provider IDs must start with a letter or number, may contain only letters, numbe
 
 - `Translation` accepts and outputs text directly, using a configured chat provider for translation. Changing the provider switches the model list to that provider's locally configured defaults without requesting a remote model list. Source language supports automatic detection, and the node name and language dropdown options follow only the ComfyUI frontend language setting.
 - In the OpenAI Image and Codex Image nodes, `model_name` means the GPT Image model. The Codex backend uses `gpt-5.5` internally as the Responses API main model and passes the image model, size, quality, and background to the `image_generation` tool.
+- xAI image nodes default to `grok-imagine-image-2.0` while retaining `grok-imagine-image-quality` and `grok-imagine-image`. Image generation with 2.0 supports `medium` (default) and `low` quality. The current xAI editing documentation does not define a `quality` parameter, so the edit node does not send it yet.
 - `seed` inputs marked as cache controls on OpenAI/Codex and xAI nodes trigger re-execution but are not sent to those APIs.
 
 ### Google (Gemini & Veo) Authorization & Video Generation

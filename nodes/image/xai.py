@@ -13,10 +13,11 @@ from ...core.xai import _parse_xai_error, xai_credentials
 from ._shared import error_image, format_error, image_sources_to_batch, image_tensors_from_input, r18_image, is_safety_error
 
 
-XAI_IMAGE_MODELS = ["grok-imagine-image-quality", "grok-imagine-image"]
+XAI_IMAGE_MODELS = ["grok-imagine-image-2.0", "grok-imagine-image-quality", "grok-imagine-image"]
 XAI_ASPECT_RATIOS = ["auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "2:1", "1:2", "19.5:9", "9:19.5", "20:9", "9:20"]
 XAI_RESOLUTIONS = ["1k", "2k"]
 XAI_MIME_TYPES = ["image/png", "image/jpeg"]
+XAI_QUALITIES = ["medium", "low"]
 
 
 def _xai_image_request(endpoint: str, payload: dict, api_key: str, base_url: str):
@@ -38,7 +39,7 @@ def _xai_image_request(endpoint: str, payload: dict, api_key: str, base_url: str
     return tensor_batch, sources[0]
 
 
-def xai_image_generate(prompt: str, model: str, aspect_ratio: str, resolution: str, mime_type: str, n: int, api_key: str, base_url: str):
+def xai_image_generate(prompt: str, model: str, aspect_ratio: str, resolution: str, mime_type: str, n: int, api_key: str, base_url: str, quality: str = "medium"):
     payload = {
         "model": model,
         "prompt": prompt,
@@ -48,6 +49,8 @@ def xai_image_generate(prompt: str, model: str, aspect_ratio: str, resolution: s
         "resolution": resolution,
         "mime_type": mime_type,
     }
+    if model == "grok-imagine-image-2.0":
+        payload["quality"] = quality
     return _xai_image_request("images/generations", payload, api_key, base_url)
 
 
@@ -88,12 +91,13 @@ class XAIImagineNode(IO.ComfyNode):
             category="ComfyUI LLM Mini/Image/xAI",
             inputs=[
                 IO.String.Input("prompt", multiline=True, default=""),
-                IO.Combo.Input("model_name", options=XAI_IMAGE_MODELS, default="grok-imagine-image-quality"),
+                IO.Combo.Input("model_name", options=XAI_IMAGE_MODELS, default="grok-imagine-image-2.0"),
                 IO.Combo.Input("aspect_ratio", options=XAI_ASPECT_RATIOS, default="1:1"),
                 IO.Combo.Input("resolution", options=XAI_RESOLUTIONS, default="1k"),
                 IO.Combo.Input("mime_type", options=XAI_MIME_TYPES, default="image/png"),
                 IO.Int.Input("n", default=1, min=1, max=10, step=1, tooltip="Number of images to generate."),
                 IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1, control_after_generate=True, tooltip="Cache and re-execution control only; not sent to xAI."),
+                IO.Combo.Input("quality", options=XAI_QUALITIES, default="medium", tooltip="Generation quality for grok-imagine-image-2.0; ignored for legacy models."),
             ],
             outputs=[
                 IO.Image.Output("image"),
@@ -104,13 +108,13 @@ class XAIImagineNode(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, prompt, model_name, aspect_ratio, resolution, mime_type, n, seed, unique_id=None):
+    def execute(cls, prompt, model_name, aspect_ratio, resolution, mime_type, n, seed, quality="medium", unique_id=None):
         node_id = get_unique_id(cls, unique_id)
         info = resolve_provider("xai")
         api_key = info.get("api_key", "")
         try:
             with StatusUpdater(node_id, "Generating (xAI Imagine)") as updater:
-                res = xai_image_generate(prompt, model_name, aspect_ratio, resolution, mime_type, n, api_key, "")
+                res = xai_image_generate(prompt, model_name, aspect_ratio, resolution, mime_type, n, api_key, "", quality)
                 return (res[0],)
         except Exception as exc:
             format_error("xAI image", exc)
@@ -126,12 +130,13 @@ class XAIImageEditNode(IO.ComfyNode):
             category="ComfyUI LLM Mini/Image/xAI",
             inputs=[
                 IO.String.Input("prompt", multiline=True, default=""),
-                IO.Combo.Input("model_name", options=XAI_IMAGE_MODELS, default="grok-imagine-image-quality"),
+                IO.Combo.Input("model_name", options=XAI_IMAGE_MODELS, default="grok-imagine-image-2.0"),
                 IO.Combo.Input("aspect_ratio", options=XAI_ASPECT_RATIOS, default="1:1"),
                 IO.Combo.Input("resolution", options=XAI_RESOLUTIONS, default="1k"),
                 IO.Combo.Input("mime_type", options=XAI_MIME_TYPES, default="image/png"),
                 IO.Int.Input("n", default=1, min=1, max=10, step=1, tooltip="Number of image variations to generate."),
                 IO.Int.Input("seed", default=0, min=0, max=2147483647, step=1, control_after_generate=True, tooltip="Cache and re-execution control only; not sent to xAI."),
+                IO.Combo.Input("quality", options=XAI_QUALITIES, default="medium", tooltip="Reserved for grok-imagine-image-2.0. The current xAI edit documentation does not define this parameter, so it is not sent."),
                 IO.Autogrow.Input(
                     "images",
                     template=IO.Autogrow.TemplateNames(
@@ -151,7 +156,7 @@ class XAIImageEditNode(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, prompt, model_name, aspect_ratio, resolution, mime_type, n, seed, images=None, unique_id=None):
+    def execute(cls, prompt, model_name, aspect_ratio, resolution, mime_type, n, seed, quality="medium", images=None, unique_id=None):
         node_id = get_unique_id(cls, unique_id)
         info = resolve_provider("xai")
         api_key = info.get("api_key", "")
