@@ -363,6 +363,7 @@ class LlamaCppRuntime:
         self._timers: dict[str, threading.Timer] = {}
         self._deferred_policies: dict[str, set[str]] = {}
         self._reader: threading.Thread | None = None
+        self._maintenance = False
 
     @property
     def running(self) -> bool:
@@ -405,6 +406,8 @@ class LlamaCppRuntime:
 
     def start(self) -> dict[str, Any]:
         with self._lock:
+            if self._maintenance:
+                raise LlamaCppConflictError("llama.cpp runtime maintenance is in progress.")
             if self.running:
                 return self.status(include_models=False)
             settings = llama_cpp_settings()
@@ -524,6 +527,32 @@ class LlamaCppRuntime:
                 pass
             finally:
                 self._clear_process()
+
+    def begin_maintenance(self) -> None:
+        """在没有活动请求时进入维护状态并阻止新请求。"""
+        with self._lock:
+            if self._maintenance:
+                raise LlamaCppConflictError("llama.cpp runtime maintenance is already in progress.")
+            active = sum(self._active.values())
+            if active:
+                raise LlamaCppConflictError(
+                    f"Cannot install or upgrade llama.cpp while {active} request(s) are active."
+                )
+            self._maintenance = True
+
+    def end_maintenance(self) -> None:
+        with self._lock:
+            self._maintenance = False
+
+    @contextlib.contextmanager
+    def maintenance(self) -> Iterator[None]:
+        """阻止新请求，并在没有活动请求时安全停止本项目的 router。"""
+        self.begin_maintenance()
+        try:
+            self.stop()
+            yield
+        finally:
+            self.end_maintenance()
 
     def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
         self.start()
@@ -698,6 +727,7 @@ class LlamaCppRuntime:
             process_id = self._process.pid if running and self._process else None
             active = dict(self._active)
             base_url = self.base_url
+            maintenance = self._maintenance
         models: list[dict[str, Any]] = []
         error = ""
         if running and include_models:
@@ -710,6 +740,7 @@ class LlamaCppRuntime:
             "pid": process_id,
             "base_url": base_url,
             "active_requests": active,
+            "maintenance": maintenance,
             "settings": asdict(llama_cpp_settings()) | {"resolved_models_dir": str(llama_cpp_settings().model_root)},
             "environment": check,
             "models": models,

@@ -58,7 +58,7 @@ API Chat also includes the same model-list shortcut for the currently selected c
 
 ### llama.cpp Local Models
 
-llama.cpp can be installed privately under this plugin's Git-ignored `runtime/llama_cpp`; GGUF models remain shared in `ComfyUI/models/LLM`. Provider Manager never installs silently: downloads or builds happen only when you explicitly run `install-runtime`. Discovery order is configured absolute path, plugin-private runtime, then `PATH`.
+llama.cpp is installed privately under this plugin's Git-ignored `runtime/llama_cpp`; GGUF models remain shared in `ComfyUI/models/LLM`. On a first installation through ComfyUI-Manager, the root `install.py` detects the platform and attempts to install a pinned, verified runtime. Failure does not block the node installation, and Provider Manager can retry later. Provider Manager downloads or builds only after the user confirms `Install / Upgrade llama.cpp`; it never runs silently during ComfyUI startup. Discovery order is configured absolute path, plugin-private runtime, then `PATH`.
 
 ```bash
 python3 llama_cpp_setup.py check
@@ -73,8 +73,9 @@ python3 llama_cpp_setup.py install-runtime --backend auto
 - Windows Portable: from the plugin directory run `..\..\..\python_embeded\python.exe llama_cpp_setup.py install-runtime --backend auto`.
 - Windows Desktop: run the same command with the Python executable that actually launches that ComfyUI installation. NVIDIA systems use SHA256-verified official Windows CUDA archives.
 - `--offline` uses only a verified archive cache; `--force` atomically replaces an existing private runtime. The installer never downloads models.
+- Node updates do not automatically upgrade the runtime. Provider Manager can explicitly install, upgrade, or repair it: active requests cause a conflict, new requests are blocked during maintenance, and the old runtime is replaced only after validation succeeds.
 
-Place GGUF files in the default `ComfyUI/models/LLM` directory, or select `llama_cpp` in Provider Manager and configure another absolute directory. Put each vision model in its own subdirectory with its main GGUF and an accompanying projector whose filename starts with `mmproj`. Provider Manager offers Check, Copy Install Help, Start/Stop, Refresh, Load, and Unload controls. The managed router binds only to `127.0.0.1` and uses a dynamic port and temporary API key.
+Place GGUF files in the default `ComfyUI/models/LLM` directory, or select `llama_cpp` in Provider Manager and configure another absolute directory. Put each vision model in its own subdirectory with its main GGUF and an accompanying projector whose filename starts with `mmproj`. Provider Manager offers Check, Copy Install Help, Install/Upgrade, Start/Stop, Refresh, Load, and Unload controls. The managed router binds only to `127.0.0.1` and uses a dynamic port and temporary API key.
 
 API Chat and Translation expose a local unload policy only when `llama_cpp` is selected: `after_run` unloads after active requests reach zero, `keep_warm` keeps the model resident, and `idle` unloads it after the configured idle period. Nodes default to `after_run`; legacy `inherit` values are migrated to that policy. The default `auto` memory policy only attempts to release ComfyUI models when available VRAM appears insufficient; use `keep` to disable proactive release.
 

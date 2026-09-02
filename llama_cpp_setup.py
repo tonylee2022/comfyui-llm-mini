@@ -14,12 +14,16 @@ import urllib.request
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import Callable
 
-from core.llama_cpp import PRIVATE_RUNTIME_CONFIG, PRIVATE_RUNTIME_ROOT, environment_check, install_help
+try:
+    from .core.llama_cpp import PRIVATE_RUNTIME_CONFIG, PRIVATE_RUNTIME_ROOT, environment_check, install_help
+except ImportError:
+    from core.llama_cpp import PRIVATE_RUNTIME_CONFIG, PRIVATE_RUNTIME_ROOT, environment_check, install_help
 
 
-LLAMA_CPP_TAG = "b10436"
-LLAMA_CPP_COMMIT = "6fed9f6ff7a603b124cb8c5864fca6ea879f9f99"
+LLAMA_CPP_TAG = "b10753"
+LLAMA_CPP_COMMIT = "69320fef12d3385dcf9ca45db4dcf7eec21d5f71"
 RELEASE_BASE_URL = f"https://github.com/ggml-org/llama.cpp/releases/download/{LLAMA_CPP_TAG}"
 
 
@@ -35,21 +39,28 @@ class Asset:
 
 ASSETS = {
     "windows-cuda12": (
-        Asset("llama-b10436-bin-win-cuda-12.4-x64.zip", "063423954c7aec2cafa09b8caee9dfddd111a91ca46cbb59cc0f743334371c32"),
+        Asset("llama-b10753-bin-win-cuda-12.4-x64.zip", "949c44f94ea47e02e7490df026f0b7ff53dbb64e3849ba79125227ff93160680"),
         Asset("cudart-llama-bin-win-cuda-12.4-x64.zip", "8c79a9b226de4b3cacfd1f83d24f962d0773be79f1e7b75c6af4ded7e32ae1d6"),
     ),
     "windows-cuda13": (
-        Asset("llama-b10436-bin-win-cuda-13.3-x64.zip", "679428e6c243590bac14a113bd4147401639dee5483097446caa5a5eddf5d3aa"),
+        Asset("llama-b10753-bin-win-cuda-13.3-x64.zip", "e35fb52fbf5096614fdb597d2f8bff8ae3c73387aac9bece0e61b79e39fd71b9"),
         Asset("cudart-llama-bin-win-cuda-13.3-x64.zip", "1462a050eb4c684921ba51dcc4cc488a036674c3e73e9945ee705b854808d03e"),
     ),
-    "windows-cpu": (Asset("llama-b10436-bin-win-cpu-x64.zip", "eebe233f29bd89a6c3c03a1e92c8b97a216a67977f4742aef28005c784b1f02c"),),
-    "linux-vulkan-x86_64": (Asset("llama-b10436-bin-ubuntu-vulkan-x64.tar.gz", "ecc51b5052498c9a41abb24d686165013658c12902230461175ac33c0de3090f"),),
-    "linux-cpu-x86_64": (Asset("llama-b10436-bin-ubuntu-x64.tar.gz", "ca375784486e71640f984289461c2a4c46a246c9328c0765af2be09bb00d9539"),),
-    "linux-vulkan-aarch64": (Asset("llama-b10436-bin-ubuntu-vulkan-arm64.tar.gz", "b7091af7320faccf001c91a77f74c8ab7f2b9334863f5095d24ca754786aae2"),),
-    "linux-cpu-aarch64": (Asset("llama-b10436-bin-ubuntu-arm64.tar.gz", "960f90e69565be7ef135bced730340d3e6a30a0f1c7826d687626b0e0e383d0c"),),
-    "darwin-metal-arm64": (Asset("llama-b10436-bin-macos-arm64.tar.gz", "abd65dbfd770bde9ea17acc73521919b69073e0873d4301b8678a88e7c423fcc"),),
-    "darwin-cpu-x86_64": (Asset("llama-b10436-bin-macos-x64.tar.gz", "36138386bc4fcc99305309b16228b358ea801731af34e2fb50cd5d93d67cd6c3"),),
+    "windows-cpu": (Asset("llama-b10753-bin-win-cpu-x64.zip", "34d3ca2371c2ce20abb9eabebe2ad5666285da1c11554ba288ca9488efe2ff11"),),
+    "linux-vulkan-x86_64": (Asset("llama-b10753-bin-ubuntu-vulkan-x64.tar.gz", "30362addb83f0d1275a608c2cc9521d2b2d9a3596704aacebaf1294f94aa91e3"),),
+    "linux-cpu-x86_64": (Asset("llama-b10753-bin-ubuntu-x64.tar.gz", "a25f023c1c68bafb315ada095fa7780e286d5867783e5eebd7dfc1e36eb1a856"),),
+    "linux-vulkan-aarch64": (Asset("llama-b10753-bin-ubuntu-vulkan-arm64.tar.gz", "cba2f4a533c77a0bc5e0bcc13d4ac1129f941ba784be915196acbb403c1b2ffa"),),
+    "linux-cpu-aarch64": (Asset("llama-b10753-bin-ubuntu-arm64.tar.gz", "4224302b9bdb52b3fdfbf2439c320d6f51e3a3afc48500d4c1a5f9a76623d2ae"),),
+    "darwin-metal-arm64": (Asset("llama-b10753-bin-macos-arm64.tar.gz", "1cd94ddf3b392c22be4664a94c60d81eac820b102750e8816761c8eda1f0af57"),),
+    "darwin-cpu-x86_64": (Asset("llama-b10753-bin-macos-x64.tar.gz", "63467769fc5b911eba76dfbc4913a69f14e68ce3a998795a8954505cfbc6f9b8"),),
 }
+
+ProgressCallback = Callable[[str, str], None]
+
+
+def _progress(callback: ProgressCallback | None, phase: str, message: str) -> None:
+    if callback:
+        callback(phase, message)
 
 
 def _architecture() -> str:
@@ -248,7 +259,12 @@ def _select_backend(requested: str) -> str:
     return "metal" if system == "darwin" and _architecture() == "aarch64" else "cpu"
 
 
-def _install_prebuilt(backend: str, offline: bool, force: bool) -> dict[str, str]:
+def _install_prebuilt(
+    backend: str,
+    offline: bool,
+    force: bool,
+    progress: ProgressCallback | None = None,
+) -> dict[str, str]:
     key = _asset_key(backend)
     assets = ASSETS.get(key)
     if not assets:
@@ -259,8 +275,10 @@ def _install_prebuilt(backend: str, offline: bool, force: bool) -> dict[str, str
     with tempfile.TemporaryDirectory(prefix="install-", dir=staging_parent) as temp:
         payload = Path(temp) / "payload"
         payload.mkdir()
+        _progress(progress, "downloading", "正在下载并校验官方 llama.cpp 运行时。")
         for asset in assets:
             _extract(_download(asset, offline), payload)
+        _progress(progress, "validating", "正在验证 llama-server 与 router 能力。")
         server = _find_server(payload)
         libraries = _library_dirs(payload)
         _validate_runtime(server, backend, libraries)
@@ -268,21 +286,28 @@ def _install_prebuilt(backend: str, offline: bool, force: bool) -> dict[str, str
         if detached.exists():
             shutil.rmtree(detached)
         os.replace(payload, detached)
+        _progress(progress, "activating", "正在原子替换节点私有运行时。")
         return _activate(detached, detached / server.relative_to(payload), [detached / path.relative_to(payload) for path in libraries], backend, "official-release", force)
 
 
-def _install_cuda_source(force: bool, jobs: int) -> dict[str, str]:
+def _install_cuda_source(
+    force: bool,
+    jobs: int,
+    progress: ProgressCallback | None = None,
+) -> dict[str, str]:
     missing = [tool for tool in ("git", "cmake", "c++", "nvcc") if not shutil.which(tool)]
     if missing:
         raise RuntimeError("CUDA 源码构建缺少工具: " + ", ".join(missing))
     PRIVATE_RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="source-", dir=PRIVATE_RUNTIME_ROOT) as temp:
         source = Path(temp) / "llama.cpp"
+        _progress(progress, "downloading", "正在克隆固定版本的官方 llama.cpp 源码。")
         subprocess.run(["git", "clone", "--filter=blob:none", "--branch", LLAMA_CPP_TAG, "https://github.com/ggml-org/llama.cpp.git", str(source)], check=True)
         commit = subprocess.run(["git", "-C", str(source), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
         if commit != LLAMA_CPP_COMMIT:
             raise RuntimeError(f"源码提交校验失败: {commit}")
         build = source / "build"
+        _progress(progress, "building", "正在编译 CUDA llama-server。")
         subprocess.run(["cmake", "-S", str(source), "-B", str(build), "-DGGML_CUDA=ON", "-DGGML_NATIVE=OFF", "-DCMAKE_BUILD_TYPE=Release"], check=True)
         subprocess.run(["cmake", "--build", str(build), "--config", "Release", "--target", "llama-server", "-j", str(jobs)], check=True)
         server = _find_server(build / "bin")
@@ -290,15 +315,25 @@ def _install_cuda_source(force: bool, jobs: int) -> dict[str, str]:
         shutil.copytree(server.parent, payload)
         installed_server = _find_server(payload)
         libraries = _library_dirs(payload)
+        _progress(progress, "validating", "正在验证 llama-server 与 CUDA 设备。")
         _validate_runtime(installed_server, "cuda", libraries)
         detached = Path(temp).parent / f"activate-{os.getpid()}"
         if detached.exists():
             shutil.rmtree(detached)
         os.replace(payload, detached)
+        _progress(progress, "activating", "正在原子替换节点私有运行时。")
         return _activate(detached, detached / installed_server.relative_to(payload), [detached / path.relative_to(payload) for path in libraries], "cuda", "pinned-source", force)
 
 
-def install_runtime(backend: str, offline: bool, force: bool, dry_run: bool, jobs: int) -> dict[str, str]:
+def install_runtime(
+    backend: str,
+    offline: bool,
+    force: bool,
+    dry_run: bool,
+    jobs: int,
+    progress: ProgressCallback | None = None,
+) -> dict[str, str]:
+    _progress(progress, "detecting", "正在检测平台、GPU 和构建工具。")
     selected = _select_backend(backend)
     system = platform.system().lower()
     if selected == "cuda" and system == "linux":
@@ -314,8 +349,8 @@ def install_runtime(backend: str, offline: bool, force: bool, dry_run: bool, job
     if selected == "cuda" and system == "linux":
         if offline:
             raise RuntimeError("Linux/WSL CUDA 使用固定源码构建，当前不支持 --offline")
-        return _install_cuda_source(force, jobs)
-    return _install_prebuilt(selected, offline, force)
+        return _install_cuda_source(force, jobs, progress)
+    return _install_prebuilt(selected, offline, force, progress)
 
 
 def main() -> int:

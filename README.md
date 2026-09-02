@@ -58,7 +58,7 @@ API Chat 节点也提供同样的模型列表快捷配置入口，用于刷新�
 
 ### llama.cpp 本地模型
 
-llama.cpp 运行时可私有安装到本插件的 `runtime/llama_cpp`（已被 Git 忽略），GGUF 仍共享放在 `ComfyUI/models/LLM`。Provider Manager 不会静默安装；只有手工执行 `install-runtime` 才会下载或编译。发现优先级为“配置的绝对路径 → 节点私有运行时 → `PATH`”。
+llama.cpp 运行时私有安装到本插件的 `runtime/llama_cpp`（已被 Git 忽略），GGUF 仍共享放在 `ComfyUI/models/LLM`。通过 ComfyUI-Manager 首次安装节点时，根目录 `install.py` 会自动检测平台并尝试安装固定、已校验版本；失败不会阻止节点安装，可稍后在 Provider Manager 中重试。Provider Manager 只有在用户确认点击“安装 / 升级 llama.cpp”后才会下载或编译，不会随 ComfyUI 启动静默执行。发现优先级为“配置的绝对路径 → 节点私有运行时 → `PATH`”。
 
 ```bash
 python3 llama_cpp_setup.py check
@@ -73,8 +73,9 @@ python3 llama_cpp_setup.py install-runtime --backend auto
 - Windows Portable：在插件目录执行 `..\..\..\python_embeded\python.exe llama_cpp_setup.py install-runtime --backend auto`。
 - Windows Desktop：用该桌面版实际启动 ComfyUI 的 Python 执行同一命令。NVIDIA 环境使用经过 SHA256 校验的官方 Windows CUDA 预编译包。
 - `--offline` 只使用已校验的下载缓存；`--force` 原子替换已有私有运行时。安装器不下载模型。
+- 节点更新不会自动升级运行时。Provider Manager 可显式安装、升级或修复：有活动请求时拒绝操作，安装期间阻止新请求，校验通过后才原子替换旧运行时。
 
-将 GGUF 放入默认的 `ComfyUI/models/LLM`，或在 Provider Manager 选择 `llama_cpp` 后设置绝对模型目录。视觉模型应放在独立子目录中，主 GGUF 与文件名以 `mmproj` 开头的投影 GGUF 放在一起。Provider Manager 提供“检查 llama.cpp”“复制安装帮助”、启动/停止、刷新、加载和卸载；router 仅监听 `127.0.0.1`，使用动态端口和临时 API Key。
+将 GGUF 放入默认的 `ComfyUI/models/LLM`，或在 Provider Manager 选择 `llama_cpp` 后设置绝对模型目录。视觉模型应放在独立子目录中，主 GGUF 与文件名以 `mmproj` 开头的投影 GGUF 放在一起。Provider Manager 提供“检查 llama.cpp”“复制安装帮助”“安装 / 升级 llama.cpp”、启动/停止、刷新、加载和卸载；router 仅监听 `127.0.0.1`，使用动态端口和临时 API Key。
 
 API Chat 和翻译节点选择 `llama_cpp` 后会显示本地卸载策略：`after_run` 在活动请求归零后卸载，`keep_warm` 保持驻留，`idle` 在配置的空闲时间后卸载。节点默认使用 `after_run`；旧工作流中的 `inherit` 会迁移为该策略。默认显存策略 `auto` 仅在预计显存不足时尝试释放 ComfyUI 模型；设为 `keep` 可禁止主动释放。
 

@@ -12,10 +12,21 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from core import llama_cpp
+from core import llama_cpp_install
+import install as install_hook
 import llama_cpp_setup
 
 
 class LlamaCppSetupTests(unittest.TestCase):
+    def test_pinned_release_assets_match_tag(self):
+        self.assertEqual(llama_cpp_setup.LLAMA_CPP_TAG, "b10753")
+        self.assertEqual(llama_cpp_setup.LLAMA_CPP_COMMIT, "69320fef12d3385dcf9ca45db4dcf7eec21d5f71")
+        for assets in llama_cpp_setup.ASSETS.values():
+            for asset in assets:
+                if asset.filename.startswith("llama-b"):
+                    self.assertIn(f"llama-{llama_cpp_setup.LLAMA_CPP_TAG}-", asset.filename)
+                self.assertRegex(asset.sha256, r"^[0-9a-f]{64}$")
+
     def test_auto_cuda_requires_driver_and_toolkit(self):
         check = {
             "nvidia_driver": True,
@@ -236,6 +247,118 @@ class LlamaCppLifecycleTests(unittest.TestCase):
         self.assertNotIn("shell", kwargs)
         if llama_cpp.os.name != "nt":
             self.assertTrue(kwargs["start_new_session"])
+
+    def test_maintenance_rejects_active_requests_and_blocks_start(self):
+        runtime = llama_cpp.LlamaCppRuntime()
+        runtime._active["model"] = 1
+        with self.assertRaises(llama_cpp.LlamaCppConflictError):
+            runtime.begin_maintenance()
+        runtime._active.clear()
+        runtime.begin_maintenance()
+        try:
+            with self.assertRaises(llama_cpp.LlamaCppConflictError):
+                runtime.start()
+        finally:
+            runtime.end_maintenance()
+
+
+class LlamaCppInstallManagerTests(unittest.TestCase):
+    class FakeRuntime:
+        def __init__(self, conflict: bool = False):
+            self.conflict = conflict
+            self.maintenance = False
+            self.stopped = False
+
+        def begin_maintenance(self):
+            if self.conflict:
+                raise llama_cpp.LlamaCppConflictError("active")
+            self.maintenance = True
+
+        def stop(self):
+            self.stopped = True
+
+        def end_maintenance(self):
+            self.maintenance = False
+
+    def test_active_request_conflict_is_returned_before_thread_starts(self):
+        manager = llama_cpp_install.LlamaCppInstallManager()
+        runtime = self.FakeRuntime(conflict=True)
+        plan = {"backend": "cpu", "source": "official-release", "runtime_dir": "/runtime", "tag": "b1"}
+        with (
+            patch.object(manager, "plan", return_value=plan),
+            patch.object(llama_cpp_install, "RUNTIME", runtime),
+            self.assertRaises(llama_cpp.LlamaCppConflictError),
+        ):
+            manager.start("auto")
+        self.assertIsNone(manager._thread)
+
+    def test_async_install_reports_progress_and_success(self):
+        manager = llama_cpp_install.LlamaCppInstallManager()
+        runtime = self.FakeRuntime()
+        plan = {"backend": "cpu", "source": "official-release", "runtime_dir": "/runtime", "tag": "b1"}
+
+        def install_runtime(backend, offline, force, dry_run, jobs, progress=None):
+            progress("validating", "validating")
+            return {"backend": "cpu", "executable": "/runtime/llama-server"}
+
+        with (
+            patch.object(manager, "plan", return_value=plan),
+            patch.object(llama_cpp_install, "RUNTIME", runtime),
+            patch.object(llama_cpp_install.llama_cpp_setup, "install_runtime", side_effect=install_runtime),
+            patch.object(llama_cpp_install, "_private_runtime_metadata", return_value={"tag": "b1"}),
+        ):
+            manager.start("auto")
+            manager._thread.join(timeout=2)
+        state = manager.status()
+        self.assertEqual(state["state"], "succeeded")
+        self.assertEqual(state["phase"], "complete")
+        self.assertTrue(runtime.stopped)
+        self.assertFalse(runtime.maintenance)
+
+    def test_failed_install_redacts_credentials_and_releases_maintenance(self):
+        manager = llama_cpp_install.LlamaCppInstallManager()
+        runtime = self.FakeRuntime()
+        plan = {"backend": "cpu", "source": "official-release", "runtime_dir": "/runtime", "tag": "b1"}
+        with (
+            patch.object(manager, "plan", return_value=plan),
+            patch.object(llama_cpp_install, "RUNTIME", runtime),
+            patch.object(
+                llama_cpp_install.llama_cpp_setup,
+                "install_runtime",
+                side_effect=RuntimeError("token=secret-value build failed"),
+            ),
+        ):
+            manager.start("auto")
+            manager._thread.join(timeout=2)
+        state = manager.status()
+        self.assertEqual(state["state"], "failed")
+        self.assertNotIn("secret-value", state["error"])
+        self.assertFalse(runtime.maintenance)
+
+
+class InstallHookTests(unittest.TestCase):
+    def test_first_install_failure_does_not_block_manager(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            with (
+                patch.object(install_hook, "PRIVATE_RUNTIME_ROOT", root),
+                patch.object(install_hook.llama_cpp_setup, "install_runtime", side_effect=RuntimeError("offline")) as install_runtime,
+                patch("sys.stdout", new_callable=io.StringIO) as stdout,
+            ):
+                self.assertEqual(install_hook.main(), 0)
+            install_runtime.assert_called_once()
+            self.assertIn("不会阻止节点安装", stdout.getvalue())
+
+    def test_existing_private_runtime_skips_first_install(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "installed").mkdir()
+            with (
+                patch.object(install_hook, "PRIVATE_RUNTIME_ROOT", root),
+                patch.object(install_hook.llama_cpp_setup, "install_runtime") as install_runtime,
+            ):
+                self.assertEqual(install_hook.main(), 0)
+            install_runtime.assert_not_called()
 
 
 class LlamaCppMemoryPolicyTests(unittest.TestCase):

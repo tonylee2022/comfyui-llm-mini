@@ -37,6 +37,7 @@ export async function setupProviderManager(node) {
   let currentProvidersData = [];
   let chatBackendConfigurable = true;
   let activeDeviceAuthModal = null;
+  let llamaInstallPolling = false;
   const providerWidget = findWidget(node, "provider");
   const newProviderIdWidget = findWidget(node, "new_provider_id");
 
@@ -661,6 +662,64 @@ export async function setupProviderManager(node) {
     }
   });
 
+  const llamaInstallLabel = t("Install / Upgrade llama.cpp", "安装 / 升级 llama.cpp");
+  node.addWidget("button", llamaInstallLabel, llamaInstallLabel, async () => {
+    if (providerWidget.value !== "llama_cpp") {
+      alert(t("Select the llama_cpp provider first.", "请先选择 llama_cpp 提供商。"));
+      return;
+    }
+    try {
+      const statusResponse = await api.fetchApi("/llm-mini/llama/runtime/install-status?backend=auto");
+      const installStatus = await statusResponse.json();
+      if (!statusResponse.ok) throw new Error(installStatus.error || `HTTP ${statusResponse.status}`);
+      if (installStatus.state === "running") {
+        alert(t("A llama.cpp installation is already running.", "llama.cpp 安装任务正在运行。"));
+        return;
+      }
+      const plan = installStatus.plan || {};
+      if (plan.error) throw new Error(plan.error);
+      const currentTag = plan.current?.tag || t("not installed", "未安装");
+      const action = !plan.installed
+        ? t("install", "安装")
+        : (plan.current?.tag === plan.tag ? t("repair", "修复") : t("upgrade", "升级"));
+      const promptText = t(
+        `Confirm llama.cpp ${action}?\nCurrent: ${currentTag}\nTarget: ${plan.tag}\nBackend: ${plan.backend}\nMethod: ${plan.source}\nDirectory: ${plan.runtime_dir}\n\nThe managed router will stop. Models are not downloaded.`,
+        `确认${action} llama.cpp？\n当前版本：${currentTag}\n目标版本：${plan.tag}\n后端：${plan.backend}\n方式：${plan.source}\n目录：${plan.runtime_dir}\n\n本插件管理的 router 将停止；不会下载模型。`
+      );
+      if (!confirm(promptText)) return;
+
+      const response = await api.fetchApi("/llm-mini/llama/runtime/install", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ backend: "auto" })
+      });
+      let state = await response.json();
+      if (!response.ok) throw new Error(state.error || `HTTP ${response.status}`);
+      llamaInstallPolling = true;
+      while (llamaInstallPolling && state.state === "running") {
+        statusWidget.value = t(
+          `llama.cpp installation: ${state.phase || "running"}\n${state.message || ""}`,
+          `llama.cpp 安装：${state.phase || "进行中"}\n${state.message || ""}`
+        );
+        node.setDirtyCanvas(true, true);
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const pollResponse = await api.fetchApi("/llm-mini/llama/runtime/install-status?backend=auto");
+        state = await pollResponse.json();
+        if (!pollResponse.ok) throw new Error(state.error || `HTTP ${pollResponse.status}`);
+      }
+      if (!llamaInstallPolling) return;
+      if (state.state === "failed") throw new Error(state.error || state.message || t("Installation failed.", "安装失败。"));
+      alert(t("llama.cpp runtime installed successfully. Start it when needed.", "llama.cpp 运行时安装完成，可按需启动。"));
+      await loadSelectedProviderConfig();
+    } catch (error) {
+      alert(t(`Install failed: ${error.message}`, `安装失败：${error.message}`));
+      statusWidget.value = t(`Install failed: ${error.message}`, `安装失败：${error.message}`);
+      node.setDirtyCanvas(true, true);
+    } finally {
+      llamaInstallPolling = false;
+    }
+  });
+
   const llamaStartLabel = t("Start llama.cpp", "启动 llama.cpp");
   node.addWidget("button", llamaStartLabel, llamaStartLabel, async () => {
     if (providerWidget.value !== "llama_cpp") {
@@ -911,6 +970,7 @@ export async function setupProviderManager(node) {
   node.setDirtyCanvas(true, true);
   
   node.onRemoved = function() {
+    llamaInstallPolling = false;
     stopPolling();
   };
 }

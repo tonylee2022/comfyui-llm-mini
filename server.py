@@ -272,6 +272,28 @@ def register_routes() -> None:
         except Exception as exc:
             return route_error(exc)
 
+    @PromptServer.instance.routes.get("/llm-mini/llama/runtime/install-status")
+    async def llama_runtime_install_status_route(request):
+        try:
+            from .core.llama_cpp_install import INSTALLER
+
+            backend = request.query.get("backend", "auto")
+            return web.json_response(await asyncio.to_thread(INSTALLER.status, backend))
+        except Exception as exc:
+            return route_error(exc)
+
+    @PromptServer.instance.routes.post("/llm-mini/llama/runtime/install")
+    async def llama_runtime_install_route(request):
+        try:
+            from .core.llama_cpp_install import INSTALLER
+
+            data = await request.json()
+            backend = str(data.get("backend", "auto") or "auto").strip()
+            state = await asyncio.to_thread(INSTALLER.start, backend)
+            return web.json_response(state, status=202)
+        except Exception as exc:
+            return route_error(exc)
+
     @PromptServer.instance.routes.post("/llm-mini/llama/config/save")
     async def llama_config_save_route(request):
         try:
