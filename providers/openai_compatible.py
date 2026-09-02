@@ -12,7 +12,7 @@ import requests
 from ..core.config import normalize_base_url, resolve_provider
 from ..core.http_logging import log_http_response
 from ..core.interrupt import check_interrupted
-from ..core.media import tensor_to_data_uri
+from ..core.media import tensor_to_data_uri, video_input_to_base64
 from ..core.oauth import resolve_oauth_marker
 from .native import list_anthropic_models, list_gemini_models, send_anthropic_chat, send_gemini_sdk_chat
 
@@ -25,26 +25,56 @@ def normalize_chat_kwargs(kwargs: dict) -> dict:
     return normalized
 
 
-def _history_without_base64_images(messages: list[dict]) -> list[dict]:
+def apply_llama_cpp_thinking_level(kwargs: dict, thinking_level: str) -> dict:
+    """将节点的禁用思考选项转换为 llama-server 官方请求参数。"""
+    result = dict(kwargs)
+    if thinking_level != "disabled":
+        return result
+    result["reasoning_effort"] = "none"
+    extra_body = dict(result.get("extra_body") or {})
+    chat_template_kwargs = dict(extra_body.get("chat_template_kwargs") or {})
+    chat_template_kwargs["enable_thinking"] = False
+    extra_body["chat_template_kwargs"] = chat_template_kwargs
+    result["extra_body"] = extra_body
+    return result
+
+
+def validate_llama_cpp_final_text(response_text: str, reasoning: str) -> None:
+    if response_text.strip():
+        return
+    if reasoning.strip():
+        raise RuntimeError(
+            "llama.cpp returned reasoning but no final response. Set Thinking Level to Disabled or increase Max Tokens."
+        )
+    raise RuntimeError("llama.cpp returned an empty response.")
+
+
+def _history_without_base64_images(messages: list[dict], strip_images: bool = True) -> list[dict]:
     cleaned_messages = []
     for message in messages:
         cleaned = dict(message)
         content = cleaned.get("content")
         if isinstance(content, list):
             cleaned_content = []
-            omitted = False
+            omitted_image = False
+            omitted_video = False
             for item in content:
-                if item.get("type") != "image_url":
+                if item.get("type") == "input_video":
+                    omitted_video = True
+                    continue
+                if item.get("type") != "image_url" or not strip_images:
                     cleaned_content.append(item)
                     continue
                 image_url = item.get("image_url", {})
                 url = image_url.get("url", "") if isinstance(image_url, dict) else str(image_url or "")
                 if url.startswith("data:"):
-                    omitted = True
+                    omitted_image = True
                 else:
                     cleaned_content.append(item)
-            if omitted:
+            if omitted_image:
                 cleaned_content.append({"type": "text", "text": "[Base64 image omitted from history]"})
+            if omitted_video:
+                cleaned_content.append({"type": "text", "text": "[Video omitted from history]"})
             cleaned["content"] = cleaned_content
         cleaned_messages.append(cleaned)
     return cleaned_messages
@@ -193,7 +223,7 @@ class ApiChatClient:
             raise RuntimeError("No API key or OAuth token found for selected provider.")
         return api_key, base_url, oauth_provider, backend
 
-    def _build_messages(self, system_prompt: str, user_prompt: str, history_json: str, image, image_url: str) -> list[dict]:
+    def _build_messages(self, system_prompt: str, user_prompt: str, history_json: str, image, image_url: str, video_data: str = "") -> list[dict]:
         try:
             messages = json.loads(history_json) if history_json else [{"role": "system", "content": system_prompt}]
         except json.JSONDecodeError:
@@ -221,8 +251,11 @@ class ApiChatClient:
         if clean_url and (clean_url.startswith("http://") or clean_url.startswith("https://") or clean_url.startswith("data:")):
             image_items.append({"type": "image_url", "image_url": {"url": clean_url}})
         
-        if image_items:
-            content = [{"type": "text", "text": user_prompt}, *image_items]
+        media_items = list(image_items)
+        if video_data:
+            media_items.append({"type": "input_video", "input_video": {"data": video_data}})
+        if media_items:
+            content = [{"type": "text", "text": user_prompt}, *media_items]
         
         messages.append({"role": "user", "content": content})
         return messages
@@ -238,13 +271,18 @@ class ApiChatClient:
                 response_text = response_text.replace(match.group(0), "").strip()
         return reasoning, response_text
 
-    def send(self, user_prompt: str, system_prompt: str, temperature: float, max_tokens: int, history_json: str = "", image=None, image_url: str = "", stream: bool = False, extra_parameters: dict | None = None, thinking_level: str = "auto", retain_images_in_history: bool = False, local_unload_policy: str = "inherit") -> tuple[str, str, str]:
+    def send(self, user_prompt: str, system_prompt: str, temperature: float, max_tokens: int, history_json: str = "", image=None, image_url: str = "", stream: bool = False, extra_parameters: dict | None = None, thinking_level: str = "auto", retain_images_in_history: bool = False, local_unload_policy: str = "inherit", video=None) -> tuple[str, str, str]:
         extra_parameters = self._prepare_extra_parameters(extra_parameters, thinking_level)
         api_key, base_url, oauth_provider, backend = self._resolve_credentials()
         if backend == "gemini" and thinking_level:
             extra_parameters["thinking_level"] = thinking_level
+        elif backend == "llama_cpp":
+            extra_parameters = apply_llama_cpp_thinking_level(extra_parameters, thinking_level)
         
-        messages = self._build_messages(system_prompt, user_prompt, history_json, image, image_url)
+        if video is not None and backend != "llama_cpp":
+            raise RuntimeError("Video input is currently supported only by the llama_cpp provider.")
+        video_data = video_input_to_base64(video) if video is not None else ""
+        messages = self._build_messages(system_prompt, user_prompt, history_json, image, image_url, video_data)
         api_reasoning = ""
         
         if backend == "llama_cpp":
@@ -256,7 +294,12 @@ class ApiChatClient:
                 and any(item.get("type") == "image_url" for item in message.get("content", []))
                 for message in messages
             )
-            with RUNTIME.model_session(self.model_name, local_unload_policy, has_images=has_images) as (local_base_url, local_api_key):
+            has_video = any(
+                isinstance(message.get("content"), list)
+                and any(item.get("type") == "input_video" for item in message.get("content", []))
+                for message in messages
+            )
+            with RUNTIME.model_session(self.model_name, local_unload_policy, has_images=has_images, has_video=has_video) as (local_base_url, local_api_key):
                 client = OpenAI(api_key=local_api_key, base_url=local_base_url)
                 response = client.chat.completions.create(
                     **normalize_chat_kwargs({"model": self.model_name, "messages": messages, "temperature": temperature, "max_tokens": max_tokens, "stream": stream, **extra_parameters})
@@ -309,6 +352,8 @@ class ApiChatClient:
                 api_reasoning = getattr(message, "reasoning_content", None) or ""
         
         reasoning, response_text = self._extract_reasoning(response_text, api_reasoning)
+        if backend == "llama_cpp":
+            validate_llama_cpp_final_text(response_text, reasoning)
         messages.append({"role": "assistant", "content": response_text})
-        output_messages = messages if retain_images_in_history else _history_without_base64_images(messages)
+        output_messages = _history_without_base64_images(messages, strip_images=not retain_images_in_history)
         return response_text, json.dumps(output_messages, ensure_ascii=False, indent=2), reasoning

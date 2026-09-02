@@ -71,8 +71,8 @@ export async function setupProviderManager(node) {
 
   const llamaExecutableWidget = node.addWidget("text", "llama-server", "", () => {}, { multiline: false });
   const llamaModelsDirWidget = node.addWidget("text", t("Models Directory", "模型目录"), "", () => {}, { multiline: false });
-  const llamaContextWidget = node.addWidget("number", t("Context Size", "上下文长度"), 32768, () => {}, { min: 512, max: 1048576, step: 512, precision: 0 });
-  const llamaGpuLayersWidget = node.addWidget("number", t("GPU Layers", "GPU 层数"), 999, () => {}, { min: 0, max: 9999, step: 1, precision: 0 });
+  const llamaContextWidget = node.addWidget("number", t("Default Context Size", "默认上下文长度"), 32768, () => {}, { min: 512, max: 1048576, step: 512, precision: 0 });
+  const llamaGpuLayersWidget = node.addWidget("number", t("Default GPU Layers", "默认 GPU 层数"), 999, () => {}, { min: 0, max: 9999, step: 1, precision: 0 });
   const llamaModelsMaxWidget = node.addWidget("number", t("Max Loaded Models", "最大驻留模型数"), 1, () => {}, { min: 1, max: 32, step: 1, precision: 0 });
   const llamaUnloadWidget = node.addWidget("combo", t("Default Unload Policy", "默认卸载策略"), unloadPolicyLabel("after_run"), () => {}, {
     values: localizedUnloadPolicies

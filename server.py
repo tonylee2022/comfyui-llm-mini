@@ -350,6 +350,20 @@ def register_routes() -> None:
         except Exception as exc:
             return route_error(exc)
 
+    @PromptServer.instance.routes.post("/llm-mini/llama/models/config/save")
+    async def llama_model_config_save_route(request):
+        try:
+            from .core.llama_cpp import RUNTIME, save_llama_cpp_model_config
+            data = await request.json()
+            model = str(data.get("model", "") or "").strip()
+            values = data.get("config")
+            if values is not None and not isinstance(values, dict):
+                raise ValueError("config must be an object.")
+            saved = await asyncio.to_thread(save_llama_cpp_model_config, model, values)
+            return web.json_response({"success": True, "model": model, "config": saved, "restart_required": RUNTIME.running})
+        except Exception as exc:
+            return route_error(exc)
+
     @PromptServer.instance.routes.post("/llm-mini/llama/models/unload")
     async def llama_model_unload_route(request):
         try:

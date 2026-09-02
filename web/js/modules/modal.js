@@ -160,6 +160,30 @@ const CSS_STYLE = `
   font-family: monospace;
   color: #e5e7eb;
 }
+.llm-mini-model-config-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(180px, 1.4fr);
+  gap: 10px 14px;
+  align-items: center;
+}
+.llm-mini-model-config-grid label {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.88rem;
+}
+.llm-mini-model-config-input {
+  box-sizing: border-box;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  color: #fff;
+  padding: 7px 9px;
+}
+textarea.llm-mini-model-config-input {
+  min-height: 110px;
+  resize: vertical;
+  font-family: monospace;
+}
 .llm-mini-modal-footer {
   padding: 16px 24px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
@@ -685,15 +709,144 @@ export function showLlamaCppManagerModal(initialStatus, onChanged) {
   modal.appendChild(footer);
 
   let status = initialStatus || {};
-  const request = async (path, model = null) => {
+  const request = async (path, payload = null) => {
     const response = await api.fetchApi(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(model ? { model } : {})
+      body: JSON.stringify(typeof payload === "string" ? { model: payload } : (payload || {}))
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
     return data;
+  };
+
+  const editModelConfig = (modelId) => {
+    const editorOverlay = document.createElement("div");
+    editorOverlay.className = "llm-mini-modal-overlay";
+    editorOverlay.style.zIndex = "10001";
+    const editor = document.createElement("div");
+    editor.className = "llm-mini-modal";
+    const editorHeader = document.createElement("div");
+    editorHeader.className = "llm-mini-modal-header";
+    const editorTitle = document.createElement("h3");
+    editorTitle.className = "llm-mini-modal-title";
+    editorTitle.textContent = t(`Model Parameters · ${modelId}`, `模型参数 · ${modelId}`);
+    const editorClose = document.createElement("button");
+    editorClose.className = "llm-mini-modal-close";
+    editorClose.textContent = "×";
+    editorHeader.append(editorTitle, editorClose);
+
+    const editorBody = document.createElement("div");
+    editorBody.className = "llm-mini-modal-body";
+    const hint = document.createElement("div");
+    hint.className = "llm-mini-modal-instructions";
+    hint.style.textAlign = "left";
+    hint.textContent = t(
+      "Runtime fields inherit router defaults when empty and require a llama.cpp restart. Modality overrides apply immediately and must match the actual GGUF/mmproj capability.",
+      "运行参数留空表示继承 Router 默认值，修改后需重启 llama.cpp；模态覆盖立即生效，且必须与 GGUF/mmproj 的实际能力一致。"
+    );
+    editorBody.appendChild(hint);
+    const grid = document.createElement("div");
+    grid.className = "llm-mini-model-config-grid";
+    editorBody.appendChild(grid);
+    const current = status.model_configs?.[modelId] || {};
+    const defaults = status.settings || {};
+    const fields = {};
+    const addInput = (key, labelText, type = "number", placeholder = "") => {
+      const label = document.createElement("label");
+      label.textContent = labelText;
+      const input = document.createElement("input");
+      input.type = type;
+      input.className = "llm-mini-model-config-input";
+      input.value = current[key] ?? "";
+      input.placeholder = String(placeholder || "");
+      grid.append(label, input);
+      fields[key] = input;
+    };
+    addInput("context_size", t("Context Size", "上下文长度"), "number", defaults.context_size || 32768);
+    addInput("n_gpu_layers", t("GPU Layers", "GPU 层数"), "number", defaults.n_gpu_layers ?? 999);
+    addInput("parallel", t("Parallel Slots", "并行槽位"));
+    addInput("batch_size", t("Batch Size", "批处理大小"));
+    addInput("ubatch_size", t("Micro Batch Size", "微批处理大小"));
+    addInput("threads", t("CPU Threads", "CPU 线程数"));
+    addInput("image_max_tokens", t("Max Visual Tokens / Frame", "每帧最大视觉 Token"), "number", "model default");
+
+    const enumInput = (key, labelText, values, defaultValue = "inherit") => {
+      const label = document.createElement("label");
+      label.textContent = labelText;
+      const select = document.createElement("select");
+      select.className = "llm-mini-model-config-input";
+      values.forEach(([value, text]) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = text;
+        select.appendChild(option);
+      });
+      select.value = current[key] || defaultValue;
+      grid.append(label, select);
+      fields[key] = select;
+    };
+    enumInput("flash_attn", "Flash Attention", [["inherit", t("Inherit", "继承默认")], ["auto", "Auto"], ["on", "On"], ["off", "Off"]]);
+    const cacheValues = ["inherit", "f16", "bf16", "q8_0", "q4_0", "q4_1", "iq4_nl", "q5_0", "q5_1"];
+    enumInput("cache_type_k", "KV Cache K", cacheValues.map((value) => [value, value === "inherit" ? t("Inherit", "继承默认") : value]));
+    enumInput("cache_type_v", "KV Cache V", cacheValues.map((value) => [value, value === "inherit" ? t("Inherit", "继承默认") : value]));
+    const modalityValues = [
+      ["auto", t("Auto Detect", "自动检测")],
+      ["enabled", t("Manually Enable", "手动启用")],
+      ["disabled", t("Manually Disable", "手动禁用")],
+    ];
+    enumInput("supports_image", t("Image Input", "图像输入"), modalityValues, "auto");
+    enumInput("supports_video", t("Video Input", "视频输入"), modalityValues, "auto");
+
+    const advancedLabel = document.createElement("label");
+    advancedLabel.textContent = t("Advanced Parameters", "高级参数");
+    const advanced = document.createElement("textarea");
+    advanced.className = "llm-mini-model-config-input";
+    advanced.placeholder = "rope-scaling = yarn\nload-mode = mmap";
+    advanced.value = current.advanced || "";
+    grid.append(advancedLabel, advanced);
+    fields.advanced = advanced;
+
+    const editorFooter = document.createElement("div");
+    editorFooter.className = "llm-mini-modal-footer";
+    const resetButton = document.createElement("button");
+    resetButton.className = "llm-mini-modal-btn llm-mini-modal-btn-cancel";
+    resetButton.textContent = t("Reset to Defaults", "恢复默认");
+    const saveButton = document.createElement("button");
+    saveButton.className = "llm-mini-modal-btn llm-mini-modal-btn-save";
+    saveButton.textContent = t("Save", "保存");
+    editorFooter.append(resetButton, saveButton);
+    editor.append(editorHeader, editorBody, editorFooter);
+    editorOverlay.appendChild(editor);
+    const closeEditor = () => {
+      editorOverlay.classList.remove("active");
+      setTimeout(() => editorOverlay.remove(), 200);
+    };
+    const save = async (config) => {
+      saveButton.disabled = true;
+      resetButton.disabled = true;
+      try {
+        const result = await request("/llm-mini/llama/models/config/save", { model: modelId, config });
+        status.model_configs = status.model_configs || {};
+        if (Object.keys(result.config || {}).length) status.model_configs[modelId] = result.config;
+        else delete status.model_configs[modelId];
+        closeEditor();
+        render();
+        alert(result.restart_required
+          ? t("Saved. Restart llama.cpp to apply these model parameters.", "已保存，请重启 llama.cpp 以应用模型参数。")
+          : t("Model parameters saved.", "模型参数已保存。"));
+      } catch (error) {
+        alert(t(`Save failed: ${error.message}`, `保存失败：${error.message}`));
+        saveButton.disabled = false;
+        resetButton.disabled = false;
+      }
+    };
+    saveButton.addEventListener("click", () => save(Object.fromEntries(Object.entries(fields).map(([key, input]) => [key, input.value.trim()]))));
+    resetButton.addEventListener("click", () => save({}));
+    editorClose.addEventListener("click", closeEditor);
+    document.body.appendChild(editorOverlay);
+    editorOverlay.offsetWidth;
+    editorOverlay.classList.add("active");
   };
 
   const refresh = async (reload = false) => {
@@ -741,6 +894,12 @@ export function showLlamaCppManagerModal(initialStatus, onChanged) {
       label.className = "llm-mini-modal-modelname";
       label.style.flex = "1";
       label.textContent = `${modelId} · ${loaded ? t("loaded", "已加载") : t("unloaded", "未加载")} · ${modalities.join("/") || "text"}${active ? ` · active ${active}` : ""}`;
+      const configured = Boolean(status.model_configs?.[modelId]);
+      if (configured) label.textContent += t(" · configured", " · 已配置");
+      const configure = document.createElement("button");
+      configure.className = "llm-mini-modal-btn llm-mini-modal-btn-apply";
+      configure.textContent = t("Configure", "配置");
+      configure.addEventListener("click", () => editModelConfig(modelId));
       const action = document.createElement("button");
       action.className = `llm-mini-modal-btn ${loaded ? "llm-mini-modal-btn-cancel" : "llm-mini-modal-btn-apply"}`;
       action.textContent = loaded ? t("Unload", "卸载") : t("Load", "加载");
@@ -755,7 +914,7 @@ export function showLlamaCppManagerModal(initialStatus, onChanged) {
           action.disabled = false;
         }
       });
-      row.append(label, action);
+      row.append(label, configure, action);
       body.appendChild(row);
     });
   };

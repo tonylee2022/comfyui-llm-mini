@@ -13,6 +13,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections import deque
@@ -30,6 +31,8 @@ LLAMA_CPP_PROVIDER = "llama_cpp"
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 PRIVATE_RUNTIME_ROOT = PACKAGE_ROOT / "runtime" / "llama_cpp"
 PRIVATE_RUNTIME_CONFIG = PRIVATE_RUNTIME_ROOT / "runtime_config.json"
+MODEL_PRESET_PATH = PRIVATE_RUNTIME_ROOT / "models-preset.ini"
+MODEL_CONFIGS_OPTION = "model_configs"
 UNLOAD_INHERIT = "inherit"
 UNLOAD_AFTER_RUN = "after_run"
 UNLOAD_KEEP_WARM = "keep_warm"
@@ -38,6 +41,37 @@ UNLOAD_POLICIES = (UNLOAD_INHERIT, UNLOAD_AFTER_RUN, UNLOAD_KEEP_WARM, UNLOAD_ID
 MEMORY_AUTO = "auto"
 MEMORY_KEEP = "keep"
 MEMORY_POLICIES = (MEMORY_AUTO, MEMORY_KEEP)
+MODEL_CONFIG_INTEGER_FIELDS = {
+    "context_size": ("ctx-size", 1024, 1048576),
+    "n_gpu_layers": ("n-gpu-layers", 0, 9999),
+    "parallel": ("parallel", 1, 128),
+    "batch_size": ("batch-size", 1, 8192),
+    "ubatch_size": ("ubatch-size", 1, 8192),
+    "threads": ("threads", 1, 1024),
+    "image_max_tokens": ("image-max-tokens", 1, 65536),
+}
+MODEL_CONFIG_ENUM_FIELDS = {
+    "flash_attn": ("flash-attn", {"auto", "on", "off"}),
+    "cache_type_k": ("cache-type-k", {"f32", "f16", "bf16", "q8_0", "q4_0", "q4_1", "iq4_nl", "q5_0", "q5_1"}),
+    "cache_type_v": ("cache-type-v", {"f32", "f16", "bf16", "q8_0", "q4_0", "q4_1", "iq4_nl", "q5_0", "q5_1"}),
+}
+MODEL_CONFIG_MODALITY_FIELDS = {
+    "supports_image": "image",
+    "supports_video": "video",
+}
+MODEL_CONFIG_MODALITY_VALUES = {"auto", "enabled", "disabled"}
+MODEL_CONFIG_RESERVED_ARGS = {
+    "api-key", "alias", "host", "port", "model", "model-url", "models-dir",
+    "models-max", "models-preset", "models-autoload", "hf-repo", "hf-file", "hf-token",
+}
+MODEL_CONFIG_ADVANCED_ARGS = {
+    "cache-prompt", "cache-reuse", "chat-template", "chat-template-file",
+    "cont-batching", "kv-offload", "load-mode", "main-gpu", "no-cache-prompt",
+    "no-cont-batching", "no-kv-offload", "no-mmproj", "rope-freq-base",
+    "rope-freq-scale", "rope-scale", "rope-scaling", "split-mode", "swa-full",
+    "tensor-split", "yarn-attn-factor", "yarn-beta-fast", "yarn-beta-slow",
+    "yarn-ext-factor", "yarn-orig-ctx",
+}
 
 
 class LlamaCppError(RuntimeError):
@@ -180,6 +214,182 @@ def save_llama_cpp_settings(values: dict[str, Any]) -> LlamaCppSettings:
     return updated
 
 
+def _validate_model_id(model: Any) -> str:
+    model = str(model or "").strip()
+    if not model or len(model) > 512 or any(char in model for char in "\r\n[]"):
+        raise ValueError("Invalid llama.cpp model ID for a model preset.")
+    return model
+
+
+def _normalize_advanced_model_args(value: Any) -> str:
+    lines = []
+    seen = set()
+    for raw_line in str(value or "").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith(("#", ";")):
+            continue
+        if "=" not in line:
+            raise ValueError("Advanced model parameters must use one 'name = value' entry per line.")
+        name, raw_value = (part.strip() for part in line.split("=", 1))
+        name = name.lstrip("-").lower()
+        if not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", name):
+            raise ValueError(f"Invalid advanced llama.cpp parameter name: {name}")
+        standard_names = {spec[0] for spec in MODEL_CONFIG_INTEGER_FIELDS.values()} | {spec[0] for spec in MODEL_CONFIG_ENUM_FIELDS.values()}
+        if name in MODEL_CONFIG_RESERVED_ARGS or name in standard_names:
+            raise ValueError(f"The llama.cpp parameter cannot be overridden in advanced settings: {name}")
+        if name not in MODEL_CONFIG_ADVANCED_ARGS:
+            raise ValueError(f"Unsupported advanced llama.cpp model parameter: {name}")
+        if name in seen:
+            raise ValueError(f"Duplicate advanced llama.cpp parameter: {name}")
+        if not raw_value or len(raw_value) > 2048 or any(ord(char) < 32 for char in raw_value):
+            raise ValueError(f"Invalid value for advanced llama.cpp parameter: {name}")
+        seen.add(name)
+        lines.append(f"{name} = {raw_value}")
+    if len(lines) > 64:
+        raise ValueError("At most 64 advanced llama.cpp parameters are allowed per model.")
+    return "\n".join(lines)
+
+
+def normalize_llama_cpp_model_config(values: dict[str, Any] | None) -> dict[str, Any]:
+    values = values or {}
+    normalized: dict[str, Any] = {}
+    for field, (_, minimum, maximum) in MODEL_CONFIG_INTEGER_FIELDS.items():
+        raw = values.get(field)
+        if raw in (None, ""):
+            continue
+        try:
+            number = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field} must be an integer.") from exc
+        if number < minimum or number > maximum:
+            raise ValueError(f"{field} must be between {minimum} and {maximum}.")
+        normalized[field] = number
+    for field, (_, allowed) in MODEL_CONFIG_ENUM_FIELDS.items():
+        raw = str(values.get(field, "") or "").strip().lower()
+        if not raw or raw == "inherit":
+            continue
+        if raw not in allowed:
+            raise ValueError(f"Invalid value for {field}.")
+        normalized[field] = raw
+    for field in MODEL_CONFIG_MODALITY_FIELDS:
+        raw_value = values.get(field, "")
+        if isinstance(raw_value, bool):
+            raw = "enabled" if raw_value else "disabled"
+        else:
+            raw = str(raw_value or "").strip().lower()
+        if not raw or raw in {"auto", "inherit"}:
+            continue
+        if raw not in MODEL_CONFIG_MODALITY_VALUES:
+            raise ValueError(f"Invalid value for {field}.")
+        normalized[field] = raw
+    advanced = _normalize_advanced_model_args(values.get("advanced", ""))
+    if advanced:
+        normalized["advanced"] = advanced
+    return normalized
+
+
+def effective_model_input_modalities(
+    model: str,
+    record: dict[str, Any],
+    configs: dict[str, dict[str, Any]] | None = None,
+) -> list[str]:
+    """合并 router 上报模态与插件的单模型能力覆盖。"""
+    architecture = record.get("architecture") or {}
+    reported = architecture.get("input_modalities") or []
+    modalities = {str(value).strip().lower() for value in reported if str(value).strip()}
+    config = (configs if configs is not None else load_llama_cpp_model_configs()).get(model, {})
+    for field, modality in MODEL_CONFIG_MODALITY_FIELDS.items():
+        override = config.get(field)
+        if override == "enabled":
+            modalities.add(modality)
+        elif override == "disabled":
+            modalities.discard(modality)
+    return [value for value in ("text", "image", "video", "audio") if value in modalities] + sorted(
+        modalities.difference({"text", "image", "video", "audio"})
+    )
+
+
+def model_with_effective_modalities(
+    record: dict[str, Any],
+    configs: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    model = str(record.get("id") or record.get("model") or "")
+    result = dict(record)
+    architecture = dict(record.get("architecture") or {})
+    reported = list(architecture.get("input_modalities") or [])
+    architecture["reported_input_modalities"] = reported
+    architecture["input_modalities"] = effective_model_input_modalities(model, record, configs)
+    result["architecture"] = architecture
+    return result
+
+
+def load_llama_cpp_model_configs() -> dict[str, dict[str, Any]]:
+    config = load_ini()
+    if not config.has_option("llama_cpp", MODEL_CONFIGS_OPTION):
+        return {}
+    try:
+        payload = json.loads(config.get("llama_cpp", MODEL_CONFIGS_OPTION, fallback="{}", raw=True))
+        if not isinstance(payload, dict):
+            return {}
+        return {
+            _validate_model_id(model): normalize_llama_cpp_model_config(values)
+            for model, values in payload.items()
+            if isinstance(values, dict)
+        }
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return {}
+
+
+def save_llama_cpp_model_config(model: Any, values: dict[str, Any] | None) -> dict[str, Any]:
+    model = _validate_model_id(model)
+    normalized = normalize_llama_cpp_model_config(values)
+    configs = load_llama_cpp_model_configs()
+    if normalized:
+        configs[model] = normalized
+    else:
+        configs.pop(model, None)
+    config = load_ini()
+    if not config.has_section("llama_cpp"):
+        config.add_section("llama_cpp")
+    config["llama_cpp"][MODEL_CONFIGS_OPTION] = json.dumps(configs, ensure_ascii=False, separators=(",", ":"))
+    save_ini(config)
+    return normalized
+
+
+def write_llama_cpp_model_preset(settings: LlamaCppSettings | None = None) -> Path:
+    settings = settings or llama_cpp_settings()
+    lines = [
+        "version = 1",
+        "",
+        "[*]",
+        f"ctx-size = {settings.context_size}",
+        f"n-gpu-layers = {settings.n_gpu_layers}",
+    ]
+    for model, values in sorted(load_llama_cpp_model_configs().items()):
+        lines.extend(["", f"[{model}]"])
+        for field, (argument, _, _) in MODEL_CONFIG_INTEGER_FIELDS.items():
+            if field in values:
+                lines.append(f"{argument} = {values[field]}")
+        for field, (argument, _) in MODEL_CONFIG_ENUM_FIELDS.items():
+            if field in values:
+                lines.append(f"{argument} = {values[field]}")
+        if values.get("advanced"):
+            lines.extend(values["advanced"].splitlines())
+    MODEL_PRESET_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=MODEL_PRESET_PATH.parent, prefix=".models-preset.", suffix=".tmp", delete=False) as handle:
+            handle.write("\n".join(lines) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+            temp_path = Path(handle.name)
+        os.replace(temp_path, MODEL_PRESET_PATH)
+    finally:
+        if temp_path and temp_path.exists():
+            temp_path.unlink()
+    return MODEL_PRESET_PATH
+
+
 def resolve_llama_server_spec(settings: LlamaCppSettings | None = None) -> LlamaCppExecutable | None:
     settings = settings or llama_cpp_settings()
     if settings.executable:
@@ -265,7 +475,7 @@ def environment_check() -> dict[str, Any]:
         "private_runtime_dir": str(PRIVATE_RUNTIME_ROOT),
         "private_runtime_installed": bool(_private_runtime_spec()),
         "version": version,
-        "router_capable": bool(help_text and "--models-dir" in help_text and "--models-max" in help_text),
+        "router_capable": bool(help_text and all(flag in help_text for flag in ("--models-dir", "--models-max", "--models-preset"))),
         "models_dir": str(model_root),
         "models_dir_exists": model_root.is_dir(),
         "gguf_count": gguf_count,
@@ -400,8 +610,8 @@ class LlamaCppRuntime:
             [str(executable_spec.path), "--help"], 10,
             env=_executable_environment(executable_spec), cwd=executable_spec.path.parent,
         )
-        if "--models-dir" not in help_text or "--models-max" not in help_text:
-            raise LlamaCppError("The configured llama-server does not support router mode. Please install a current llama.cpp build.")
+        if any(flag not in help_text for flag in ("--models-dir", "--models-max", "--models-preset")):
+            raise LlamaCppError("The configured llama-server does not support router model presets. Please install a current llama.cpp build.")
         return executable_spec, help_text
 
     def start(self) -> dict[str, Any]:
@@ -413,6 +623,7 @@ class LlamaCppRuntime:
             settings = llama_cpp_settings()
             executable_spec, help_text = self._validate_start(settings)
             executable = executable_spec.path
+            preset_path = write_llama_cpp_model_preset(settings)
             self._port = self._free_port()
             self._token = secrets.token_urlsafe(32)
             self._log_tail.clear()
@@ -421,9 +632,8 @@ class LlamaCppRuntime:
                 "--host", "127.0.0.1",
                 "--port", str(self._port),
                 "--models-dir", str(settings.model_root),
+                "--models-preset", str(preset_path),
                 "--models-max", str(settings.models_max),
-                "--ctx-size", str(settings.context_size),
-                "--n-gpu-layers", str(settings.n_gpu_layers),
                 "--no-webui",
                 "--jinja",
             ]
@@ -673,6 +883,7 @@ class LlamaCppRuntime:
         model: str,
         unload_policy: str = UNLOAD_INHERIT,
         has_images: bool = False,
+        has_video: bool = False,
         memory_policy: str | None = None,
     ) -> Iterator[tuple[str, str]]:
         if unload_policy not in UNLOAD_POLICIES:
@@ -686,9 +897,11 @@ class LlamaCppRuntime:
         preview = self._model(model, reload=True)
         if preview is None:
             raise LlamaCppError(f"llama.cpp model was not found: {model}")
-        modalities = ((preview.get("architecture") or {}).get("input_modalities") or [])
+        modalities = effective_model_input_modalities(model, preview)
         if has_images and "image" not in modalities:
             raise LlamaCppError(f"The selected llama.cpp model does not advertise image input support: {model}")
+        if has_video and "video" not in modalities:
+            raise LlamaCppError(f"The selected llama.cpp model does not advertise video input support: {model}")
         with self._lock:
             self._active[model] = self._active.get(model, 0) + 1
         try:
@@ -732,7 +945,8 @@ class LlamaCppRuntime:
         error = ""
         if running and include_models:
             try:
-                models = self.models()
+                configs = load_llama_cpp_model_configs()
+                models = [model_with_effective_modalities(model, configs) for model in self.models()]
             except Exception as exc:
                 error = str(exc)
         return {
@@ -742,6 +956,8 @@ class LlamaCppRuntime:
             "active_requests": active,
             "maintenance": maintenance,
             "settings": asdict(llama_cpp_settings()) | {"resolved_models_dir": str(llama_cpp_settings().model_root)},
+            "model_configs": load_llama_cpp_model_configs(),
+            "model_preset_path": str(MODEL_PRESET_PATH),
             "environment": check,
             "models": models,
             "error": error,

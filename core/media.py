@@ -13,6 +13,7 @@ from uuid import uuid4
 
 _OWNED_UPLOAD_TEMP_FILES: set[str] = set()
 _OWNED_UPLOAD_TEMP_LOCK = threading.RLock()
+MAX_CHAT_VIDEO_BYTES = 200 * 1024 * 1024
 
 
 def _register_upload_temp_file(path: Path) -> None:
@@ -35,6 +36,68 @@ def tensor_to_data_uri(image_tensor) -> str:
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
+def _read_limited_video_source(source, max_bytes: int) -> bytes:
+    if isinstance(source, (str, os.PathLike)):
+        path = Path(source).expanduser()
+        if not path.is_file():
+            raise ValueError(f"Video source file does not exist: {path}")
+        size = path.stat().st_size
+        if size > max_bytes:
+            raise ValueError(f"Video input is too large ({size / 1024 / 1024:.1f} MiB); maximum is {max_bytes / 1024 / 1024:.0f} MiB.")
+        return path.read_bytes()
+    if hasattr(source, "read"):
+        position = None
+        try:
+            position = source.tell()
+        except Exception:
+            pass
+        try:
+            if hasattr(source, "seek"):
+                source.seek(0)
+            data = source.read(max_bytes + 1)
+        finally:
+            if position is not None and hasattr(source, "seek"):
+                try:
+                    source.seek(position)
+                except Exception:
+                    pass
+        if not isinstance(data, (bytes, bytearray)):
+            raise ValueError("ComfyUI video stream did not return binary data.")
+        if len(data) > max_bytes:
+            raise ValueError(f"Video input exceeds the {max_bytes / 1024 / 1024:.0f} MiB limit.")
+        return bytes(data)
+    raise ValueError("Could not read the ComfyUI video source.")
+
+
+def video_input_to_base64(video_input, max_bytes: int = MAX_CHAT_VIDEO_BYTES) -> str:
+    """读取 ComfyUI VIDEO 输入的原始字节，不主动转码或缩放。"""
+    if video_input is None:
+        return ""
+    source = video_input
+    if isinstance(video_input, dict) and video_input.get("video"):
+        item = video_input["video"][0]
+        try:
+            import folder_paths
+
+            if not isinstance(item, dict):
+                raise ValueError("Invalid ComfyUI video descriptor.")
+            base = Path({
+                "temp": folder_paths.get_temp_directory(),
+                "output": folder_paths.get_output_directory(),
+                "input": folder_paths.get_input_directory(),
+            }.get(item.get("type", "temp"), folder_paths.get_temp_directory())).resolve()
+            source = (base / str(item.get("subfolder", "")) / str(item.get("filename", ""))).resolve()
+            source.relative_to(base)
+        except Exception as exc:
+            raise ValueError("Could not resolve the ComfyUI video descriptor.") from exc
+    elif not isinstance(video_input, (str, os.PathLike)) and hasattr(video_input, "get_stream_source"):
+        source = video_input.get_stream_source()
+    data = _read_limited_video_source(source, max_bytes)
+    if not data:
+        raise ValueError("Video input is empty.")
+    return base64.b64encode(data).decode("ascii")
 
 
 def image_source_to_tensor(url_or_data_uri: str):

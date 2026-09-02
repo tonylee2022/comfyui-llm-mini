@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import configparser
+import importlib
 import io
 import json
 import sys
@@ -13,8 +15,16 @@ from unittest.mock import Mock, patch
 
 from core import llama_cpp
 from core import llama_cpp_install
+from core import media
 import install as install_hook
 import llama_cpp_setup
+
+
+TEST_PACKAGE = "llama_cpp_provider_test_package"
+test_package = types.ModuleType(TEST_PACKAGE)
+test_package.__path__ = [str(Path(__file__).resolve().parents[1])]
+sys.modules.setdefault(TEST_PACKAGE, test_package)
+openai_compatible = importlib.import_module(f"{TEST_PACKAGE}.providers.openai_compatible")
 
 
 class LlamaCppSetupTests(unittest.TestCase):
@@ -141,16 +151,84 @@ class LlamaCppSettingsTests(unittest.TestCase):
             result = llama_cpp.resolve_llama_server_spec(llama_cpp.LlamaCppSettings(executable="/missing/server"))
         self.assertEqual(result, private)
 
+    def test_model_config_round_trip_and_empty_config_resets(self):
+        config = configparser.ConfigParser()
+        with patch.object(llama_cpp, "load_ini", return_value=config), patch.object(llama_cpp, "save_ini"):
+            saved = llama_cpp.save_llama_cpp_model_config("Qwen/VL", {
+                "context_size": "65536",
+                "image_max_tokens": "512",
+                "flash_attn": "on",
+                "cache_type_k": "q8_0",
+                "supports_image": "enabled",
+                "supports_video": "enabled",
+                "advanced": "rope-scaling = yarn",
+            })
+            self.assertEqual(saved["context_size"], 65536)
+            self.assertEqual(saved["image_max_tokens"], 512)
+            self.assertEqual(saved["supports_video"], "enabled")
+            self.assertEqual(llama_cpp.load_llama_cpp_model_configs()["Qwen/VL"]["flash_attn"], "on")
+            llama_cpp.save_llama_cpp_model_config("Qwen/VL", {})
+            self.assertEqual(llama_cpp.load_llama_cpp_model_configs(), {})
+
+    def test_model_config_rejects_router_and_duplicate_advanced_parameters(self):
+        with self.assertRaisesRegex(ValueError, "cannot be overridden"):
+            llama_cpp.normalize_llama_cpp_model_config({"advanced": "host = 0.0.0.0"})
+        with self.assertRaisesRegex(ValueError, "Duplicate"):
+            llama_cpp.normalize_llama_cpp_model_config({"advanced": "rope-scale = 2\nrope-scale = 3"})
+        with self.assertRaisesRegex(ValueError, "supports_video"):
+            llama_cpp.normalize_llama_cpp_model_config({"supports_video": "maybe"})
+
+    def test_model_preset_uses_global_defaults_and_model_overrides(self):
+        config = configparser.ConfigParser()
+        config.add_section("llama_cpp")
+        config["llama_cpp"][llama_cpp.MODEL_CONFIGS_OPTION] = json.dumps({
+            "vision-model": {"context_size": 65536, "n_gpu_layers": 80, "flash_attn": "auto"}
+        })
+        settings = llama_cpp.LlamaCppSettings(context_size=32768, n_gpu_layers=999)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                patch.object(llama_cpp, "load_ini", return_value=config),
+                patch.object(llama_cpp, "MODEL_PRESET_PATH", Path(temp_dir) / "models-preset.ini"),
+            ):
+                path = llama_cpp.write_llama_cpp_model_preset(settings)
+                preset = path.read_text(encoding="utf-8")
+        self.assertIn("[*]\nctx-size = 32768\nn-gpu-layers = 999", preset)
+        self.assertIn("[vision-model]\nctx-size = 65536\nn-gpu-layers = 80\nflash-attn = auto", preset)
+
+    def test_modality_overrides_take_precedence_and_are_not_server_arguments(self):
+        record = {"id": "vision-model", "architecture": {"input_modalities": ["text", "image"]}}
+        configs = {"vision-model": {"supports_image": "disabled", "supports_video": "enabled"}}
+        self.assertEqual(
+            llama_cpp.effective_model_input_modalities("vision-model", record, configs),
+            ["text", "video"],
+        )
+        config = configparser.ConfigParser()
+        config.add_section("llama_cpp")
+        config["llama_cpp"][llama_cpp.MODEL_CONFIGS_OPTION] = json.dumps(configs)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                patch.object(llama_cpp, "load_ini", return_value=config),
+                patch.object(llama_cpp, "MODEL_PRESET_PATH", Path(temp_dir) / "models-preset.ini"),
+            ):
+                preset = llama_cpp.write_llama_cpp_model_preset().read_text(encoding="utf-8")
+        self.assertNotIn("supports-image", preset)
+        self.assertNotIn("supports-video", preset)
+
 
 class FakeRuntime(llama_cpp.LlamaCppRuntime):
-    def __init__(self, visual: bool = True):
+    def __init__(self, visual: bool = True, video: bool = False):
         super().__init__()
         self.visual = visual
+        self.video = video
         self.loaded = []
         self.unloaded = []
 
     def _model(self, model: str, reload: bool = False):
-        modalities = ["text", "image"] if self.visual else ["text"]
+        modalities = ["text"]
+        if self.visual:
+            modalities.append("image")
+        if self.video:
+            modalities.append("video")
         return {"id": model, "status": {"value": "unloaded"}, "architecture": {"input_modalities": modalities}}
 
     def load_model(self, model: str, memory_policy: str | None = None):
@@ -219,6 +297,19 @@ class LlamaCppLifecycleTests(unittest.TestCase):
                 pass
         self.assertEqual(runtime.loaded, [])
 
+    def test_model_without_video_modality_rejects_video_before_loading(self):
+        runtime = FakeRuntime(visual=True, video=False)
+        with self.assertRaisesRegex(llama_cpp.LlamaCppError, "does not advertise video"):
+            with runtime.model_session("image-only", "after_run", has_video=True):
+                pass
+        self.assertEqual(runtime.loaded, [])
+
+    def test_video_model_accepts_video_session(self):
+        runtime = FakeRuntime(visual=True, video=True)
+        with runtime.model_session("video-model", "after_run", has_video=True):
+            pass
+        self.assertEqual(runtime.loaded, ["video-model"])
+
     def test_start_uses_argument_array_and_new_process_group(self):
         runtime = llama_cpp.LlamaCppRuntime()
         settings = llama_cpp.LlamaCppSettings(models_dir="/tmp/models")
@@ -228,7 +319,8 @@ class LlamaCppLifecycleTests(unittest.TestCase):
         process.stdout = []
         with (
             patch.object(llama_cpp, "llama_cpp_settings", return_value=settings),
-            patch.object(runtime, "_validate_start", return_value=(llama_cpp.LlamaCppExecutable(Path("/tmp/llama-server"), "configured", (Path("/tmp"),)), "--models-dir --models-max --fit")),
+            patch.object(runtime, "_validate_start", return_value=(llama_cpp.LlamaCppExecutable(Path("/tmp/llama-server"), "configured", (Path("/tmp"),)), "--models-dir --models-max --models-preset --fit")),
+            patch.object(llama_cpp, "write_llama_cpp_model_preset", return_value=Path("/tmp/models-preset.ini")),
             patch.object(runtime, "_free_port", return_value=43210),
             patch.object(runtime, "status", return_value={"running": True}),
             patch.object(llama_cpp, "check_interrupted"),
@@ -243,6 +335,9 @@ class LlamaCppLifecycleTests(unittest.TestCase):
         args, kwargs = popen.call_args
         self.assertIsInstance(args[0], list)
         self.assertNotIn("--api-key", args[0])
+        self.assertNotIn("--ctx-size", args[0])
+        self.assertNotIn("--n-gpu-layers", args[0])
+        self.assertEqual(args[0][args[0].index("--models-preset") + 1], "/tmp/models-preset.ini")
         self.assertTrue(kwargs["env"]["LLAMA_API_KEY"])
         self.assertNotIn("shell", kwargs)
         if llama_cpp.os.name != "nt":
@@ -393,6 +488,52 @@ class LlamaCppMemoryPolicyTests(unittest.TestCase):
         with patch.dict(sys.modules, modules):
             runtime._maybe_release_comfy_memory({"path": "/missing/model.gguf"}, "keep")
         management.unload_all_models.assert_not_called()
+
+
+class LlamaCppVideoInputTests(unittest.TestCase):
+    def test_video_input_preserves_original_bytes_and_enforces_size_limit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "source.webm"
+            payload = b"original-video"
+            path.write_bytes(payload)
+            encoded = media.video_input_to_base64(path, max_bytes=64)
+            self.assertEqual(base64.b64decode(encoded), payload)
+            with self.assertRaisesRegex(ValueError, "too large"):
+                media.video_input_to_base64(path, max_bytes=4)
+
+    def test_video_descriptor_cannot_escape_comfy_directory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            folder_paths = types.SimpleNamespace(
+                get_temp_directory=lambda: temp_dir,
+                get_output_directory=lambda: temp_dir,
+                get_input_directory=lambda: temp_dir,
+            )
+            descriptor = {"video": [{"type": "input", "subfolder": "..", "filename": "outside.mp4"}]}
+            with patch.dict(sys.modules, {"folder_paths": folder_paths}):
+                with self.assertRaisesRegex(ValueError, "resolve"):
+                    media.video_input_to_base64(descriptor)
+
+
+class LlamaCppChatThinkingTests(unittest.TestCase):
+    def test_disabled_thinking_uses_llama_server_request_parameters(self):
+        result = openai_compatible.apply_llama_cpp_thinking_level(
+            {"temperature": 0.7, "extra_body": {"custom": True}},
+            "disabled",
+        )
+        self.assertEqual(result["reasoning_effort"], "none")
+        self.assertFalse(result["extra_body"]["chat_template_kwargs"]["enable_thinking"])
+        self.assertTrue(result["extra_body"]["custom"])
+
+    def test_auto_thinking_does_not_add_llama_server_parameters(self):
+        original = {"temperature": 0.7}
+        self.assertEqual(openai_compatible.apply_llama_cpp_thinking_level(original, "auto"), original)
+
+    def test_reasoning_only_response_raises_without_exposing_reasoning(self):
+        secret_reasoning = "private chain of thought"
+        with self.assertRaises(RuntimeError) as raised:
+            openai_compatible.validate_llama_cpp_final_text("", secret_reasoning)
+        self.assertIn("reasoning but no final response", str(raised.exception))
+        self.assertNotIn(secret_reasoning, str(raised.exception))
 
 
 if __name__ == "__main__":

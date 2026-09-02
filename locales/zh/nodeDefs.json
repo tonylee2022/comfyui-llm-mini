@@ -14,6 +14,7 @@
       "system_prompt_input": { "name": "加载人格面具" },
       "thinking_level": { "name": "思考级别" },
       "images": { "name": "参考图像", "tooltip": "可选参考图（支持多张图或图像批次）。连接后会自动增加新的图像输入。" },
+      "video": { "name": "参考视频", "tooltip": "可选视频输入，仅用于实际声明支持视频的 llama.cpp 模型。" },
       "image_url": { "name": "图像 URL" },
       "stream": { "name": "流式输出" },
       "local_unload_policy": { "name": "本地模型卸载策略", "tooltip": "仅用于 llama.cpp：执行后卸载、保持驻留或空闲后卸载。" }

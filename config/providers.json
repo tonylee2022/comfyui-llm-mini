@@ -139,8 +139,8 @@
     "env_key_names": [],
     "default_models": [],
     "supports_chat": true,
-    "supports_image": false,
-    "supports_video": false,
+    "supports_image": true,
+    "supports_video": true,
     "backend": "llama_cpp"
   }
 }

@@ -91,6 +91,11 @@ class ApiChatNode(IO.ComfyNode):
                     optional=True,
                     tooltip="Optional reference images. Add image inputs dynamically as needed.",
                 ),
+                IO.Video.Input(
+                    "video",
+                    optional=True,
+                    tooltip="Optional video input for a llama.cpp model that advertises video support.",
+                ),
                 IO.Combo.Input("provider", options=providers, default=default_provider),
                 IO.Combo.Input("model_name", options=default_models, default=default_models[0]),
                 IO.String.Input("system_prompt", multiline=True, default=""),
@@ -102,7 +107,7 @@ class ApiChatNode(IO.ComfyNode):
                     "local_unload_policy",
                     options=LOCAL_UNLOAD_POLICIES,
                     default="after_run",
-                    tooltip="llama.cpp only. Inherit the provider default or override model unloading for this workflow.",
+                    tooltip="llama.cpp only. Unload after execution, keep the model resident, or unload it after the configured idle period.",
                 ),
                 IO.Boolean.Input(
                     "retain_images_in_history",
@@ -132,7 +137,7 @@ class ApiChatNode(IO.ComfyNode):
         return _chat_fingerprint(is_locked)
 
     @classmethod
-    def execute(cls, system_prompt_input="", history_json="", images=None, provider=None, model_name=None, system_prompt="", user_prompt="", temperature=0.7, max_tokens=2048, is_locked=True, local_unload_policy="after_run", retain_images_in_history=False, thinking_level="auto", image_url="", stream=False, unique_id=None):
+    def execute(cls, system_prompt_input="", history_json="", images=None, video=None, provider=None, model_name=None, system_prompt="", user_prompt="", temperature=0.7, max_tokens=2048, is_locked=True, local_unload_policy="after_run", retain_images_in_history=False, thinking_level="auto", image_url="", stream=False, unique_id=None):
         node_id = get_unique_id(cls, unique_id)
         try:
             with StatusUpdater(node_id, f"Chatting ({provider})"):
@@ -166,6 +171,7 @@ class ApiChatNode(IO.ComfyNode):
                     history_json=history_json,
                     image=valid_images if valid_images else None,
                     image_url=image_url,
+                    video=video,
                     stream=stream,
                     thinking_level=thinking_level,
                     retain_images_in_history=retain_images_in_history,

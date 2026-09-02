@@ -77,6 +77,10 @@ python3 llama_cpp_setup.py install-runtime --backend auto
 
 将 GGUF 放入默认的 `ComfyUI/models/LLM`，或在 Provider Manager 选择 `llama_cpp` 后设置绝对模型目录。视觉模型应放在独立子目录中，主 GGUF 与文件名以 `mmproj` 开头的投影 GGUF 放在一起。Provider Manager 提供“检查 llama.cpp”“复制安装帮助”“安装 / 升级 llama.cpp”、启动/停止、刷新、加载和卸载；router 仅监听 `127.0.0.1`，使用动态端口和临时 API Key。
 
+模型管理弹窗中的“配置”可为每个模型覆盖上下文长度、GPU 层数、并行槽位、批处理、微批处理、CPU 线程、Flash Attention、KV Cache 类型和每帧最大视觉 Token，也可填写经过安全校验的高级 `name = value` 参数。图像和视频输入能力可选择自动检测、手动启用或手动禁用；单模型覆盖优先于 router 上报，但手动启用不会让不支持该模态的 GGUF/mmproj 获得相应能力。运行参数留空时继承 Provider Manager 默认值，并写入官方 `--models-preset` INI，重启本插件管理的 router 后生效；模态覆盖是插件元数据，立即生效且不会作为 llama-server 参数。默认 `models_max=1`，文本模型和视觉模型不会无意间同时常驻；视觉模型的主 GGUF 与 mmproj 仍作为一个完整实例加载。
+
+API Chat 的可选 `VIDEO` 输入可连接 ComfyUI `Load Video` 节点。插件优先读取 VIDEO 对象的原始文件或字节，不设置 llama-server 媒体目录，也不主动转码、缩放或改变源帧率；视频通过官方 `input_video.data` 发送到本地回环服务，单个视频最大 200 MiB，并且始终从 `history_json` 移除。llama.cpp 保持官方默认的 4 FPS 分析采样率；可用模型还必须在 router 的 `architecture.input_modalities` 中实际声明 `video`，否则请求会在加载前失败。对于长视频，可用“每帧最大视觉 Token”控制上下文和显存占用。
+
 API Chat 和翻译节点选择 `llama_cpp` 后会显示本地卸载策略：`after_run` 在活动请求归零后卸载，`keep_warm` 保持驻留，`idle` 在配置的空闲时间后卸载。节点默认使用 `after_run`；旧工作流中的 `inherit` 会迁移为该策略。默认显存策略 `auto` 仅在预计显存不足时尝试释放 ComfyUI 模型；设为 `keep` 可禁止主动释放。
 
 ### 文件和命令行备用配置
