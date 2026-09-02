@@ -32,6 +32,7 @@ Lightweight ComfyUI nodes for LLM provider access, personas, image generation, a
 - API Chat only lists chat providers with a valid API key or OAuth credential.
 - API key, environment variable, Codex OAuth, and xAI OAuth credential paths.
 - OpenAI-compatible, Claude, Gemini, xAI, and Codex chat providers.
+- Project-managed llama.cpp local GGUF text/vision models with per-run, warm, or idle unloading.
 - Persona `.txt` files as system prompt inputs.
 - A dedicated Translation node with selectable provider, model, source language, target language, tone, and tone strength.
 - Separate OpenAI and Codex image nodes with provider-scoped backend implementations.
@@ -54,6 +55,28 @@ The recommended entry point is the `Provider Manager` node inside the ComfyUI ca
 7. Use `Custom Model ID` to add model names that are usable but not returned by the provider model-list endpoint.
 
 API Chat also includes the same model-list shortcut for the currently selected chat provider. Use Provider Manager for full provider creation, deletion, OAuth, and capability configuration.
+
+### llama.cpp Local Models
+
+llama.cpp can be installed privately under this plugin's Git-ignored `runtime/llama_cpp`; GGUF models remain shared in `ComfyUI/models/LLM`. Provider Manager never installs silently: downloads or builds happen only when you explicitly run `install-runtime`. Discovery order is configured absolute path, plugin-private runtime, then `PATH`.
+
+```bash
+python3 llama_cpp_setup.py check
+python3 llama_cpp_setup.py print-install
+python3 llama_cpp_setup.py print-install --backend auto
+python3 llama_cpp_setup.py print-install --backend cuda --shell bash
+python3 llama_cpp_setup.py install-runtime --backend auto --dry-run
+python3 llama_cpp_setup.py install-runtime --backend auto
+```
+
+- WSL/Linux uses a native Linux runtime. With an NVIDIA driver, CUDA Toolkit, and `nvcc`, it builds CUDA from pinned source; otherwise it selects an official Vulkan package when `vulkaninfo` is available, or CPU.
+- Windows Portable: from the plugin directory run `..\..\..\python_embeded\python.exe llama_cpp_setup.py install-runtime --backend auto`.
+- Windows Desktop: run the same command with the Python executable that actually launches that ComfyUI installation. NVIDIA systems use SHA256-verified official Windows CUDA archives.
+- `--offline` uses only a verified archive cache; `--force` atomically replaces an existing private runtime. The installer never downloads models.
+
+Place GGUF files in the default `ComfyUI/models/LLM` directory, or select `llama_cpp` in Provider Manager and configure another absolute directory. Put each vision model in its own subdirectory with its main GGUF and an accompanying projector whose filename starts with `mmproj`. Provider Manager offers Check, Copy Install Help, Start/Stop, Refresh, Load, and Unload controls. The managed router binds only to `127.0.0.1` and uses a dynamic port and temporary API key.
+
+API Chat and Translation expose a local unload policy only when `llama_cpp` is selected: `after_run` unloads after active requests reach zero, `keep_warm` keeps the model resident, and `idle` unloads it after the configured idle period. Nodes default to `after_run`; legacy `inherit` values are migrated to that policy. The default `auto` memory policy only attempts to release ComfyUI models when available VRAM appears insufficient; use `keep` to disable proactive release.
 
 ### File And CLI Fallbacks
 

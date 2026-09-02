@@ -130,5 +130,17 @@
     "supports_image": false,
     "supports_video": false,
     "backend": "openai_compatible"
+  },
+  "llama_cpp": {
+    "display_name": "llama.cpp Local Router",
+    "base_url": "",
+    "models_endpoint": "models",
+    "auth_type": "none",
+    "env_key_names": [],
+    "default_models": [],
+    "supports_chat": true,
+    "supports_image": false,
+    "supports_video": false,
+    "backend": "llama_cpp"
   }
 }

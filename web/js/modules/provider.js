@@ -1,7 +1,7 @@
 import { api } from "../../../../scripts/api.js";
 import { app } from "../../../../scripts/app.js";
-import { t, findWidget, updateCombo, fetchProviderInfo, refreshProviderWidgets } from "./utils.js";
-import { showModelSelectionModal, showDeviceAuthModal } from "./modal.js";
+import { t, findWidget, updateCombo, fetchProviderInfo, refreshProviderWidgets, copyToClipboard } from "./utils.js";
+import { showModelSelectionModal, showDeviceAuthModal, showLlamaCppManagerModal } from "./modal.js";
 
 const PROVIDER_ID_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,63}$/u;
 const CHAT_BACKENDS = ["openai_compatible", "anthropic"];
@@ -26,6 +26,14 @@ async function refreshAllApiChatNodes() {
 }
 
 export async function setupProviderManager(node) {
+  const canonicalUnloadPolicies = ["after_run", "keep_warm", "idle"];
+  const localizedUnloadPolicies = t(canonicalUnloadPolicies, ["执行后卸载", "保持驻留", "空闲后卸载"]);
+  const unloadPolicyValue = (value) => ({
+    "执行后卸载": "after_run",
+    "保持驻留": "keep_warm",
+    "空闲后卸载": "idle"
+  })[value] || (canonicalUnloadPolicies.includes(value) ? value : "after_run");
+  const unloadPolicyLabel = (value) => localizedUnloadPolicies[canonicalUnloadPolicies.indexOf(unloadPolicyValue(value))];
   let currentProvidersData = [];
   let chatBackendConfigurable = true;
   let activeDeviceAuthModal = null;
@@ -59,6 +67,66 @@ export async function setupProviderManager(node) {
   statusWidget.serializeValue = () => undefined;
   statusWidget.options = statusWidget.options || {};
   statusWidget.options.readonly = true;
+
+  const llamaExecutableWidget = node.addWidget("text", "llama-server", "", () => {}, { multiline: false });
+  const llamaModelsDirWidget = node.addWidget("text", t("Models Directory", "模型目录"), "", () => {}, { multiline: false });
+  const llamaContextWidget = node.addWidget("number", t("Context Size", "上下文长度"), 32768, () => {}, { min: 512, max: 1048576, step: 512, precision: 0 });
+  const llamaGpuLayersWidget = node.addWidget("number", t("GPU Layers", "GPU 层数"), 999, () => {}, { min: 0, max: 9999, step: 1, precision: 0 });
+  const llamaModelsMaxWidget = node.addWidget("number", t("Max Loaded Models", "最大驻留模型数"), 1, () => {}, { min: 1, max: 32, step: 1, precision: 0 });
+  const llamaUnloadWidget = node.addWidget("combo", t("Default Unload Policy", "默认卸载策略"), unloadPolicyLabel("after_run"), () => {}, {
+    values: localizedUnloadPolicies
+  });
+  const llamaIdleWidget = node.addWidget("number", t("Idle Unload Seconds", "空闲卸载秒数"), 600, () => {}, { min: 1, max: 86400, step: 1, precision: 0 });
+  const llamaMemoryWidget = node.addWidget("combo", t("ComfyUI Memory Policy", "ComfyUI 显存策略"), "auto", () => {}, {
+    values: ["auto", "keep"]
+  });
+  const llamaConfigWidgets = [
+    llamaExecutableWidget, llamaModelsDirWidget, llamaContextWidget, llamaGpuLayersWidget,
+    llamaModelsMaxWidget, llamaUnloadWidget, llamaIdleWidget, llamaMemoryWidget
+  ];
+  llamaConfigWidgets.forEach((widget) => { widget.serializeValue = () => undefined; });
+
+  function setWidgetVisible(widget, visible) {
+    if (!Object.prototype.hasOwnProperty.call(widget, "__llmMiniOriginalType")) {
+      widget.__llmMiniOriginalType = widget.type;
+      widget.__llmMiniOriginalComputeSize = widget.computeSize;
+    }
+    widget.type = widget.__llmMiniOriginalType;
+    widget.computeSize = widget.__llmMiniOriginalComputeSize;
+    widget.hidden = !visible;
+    widget.options = widget.options || {};
+    widget.options.hidden = !visible;
+  }
+
+  function toggleLlamaWidgets() {
+    const visible = providerWidget.value === "llama_cpp";
+    llamaConfigWidgets.forEach((widget) => setWidgetVisible(widget, visible));
+    node.size = [350, node.computeSize()[1]];
+    node.setDirtyCanvas(true, true);
+  }
+
+  function applyLlamaStatus(status) {
+    const settings = status.settings || {};
+    llamaExecutableWidget.value = settings.executable || "";
+    llamaModelsDirWidget.value = settings.models_dir || settings.resolved_models_dir || "";
+    llamaContextWidget.value = Number(settings.context_size || 32768);
+    llamaGpuLayersWidget.value = Number(settings.n_gpu_layers ?? 999);
+    llamaModelsMaxWidget.value = Number(settings.models_max || 1);
+    llamaUnloadWidget.value = unloadPolicyLabel(settings.default_unload_policy || "after_run");
+    llamaIdleWidget.value = Number(settings.idle_unload_seconds || 600);
+    llamaMemoryWidget.value = settings.comfy_memory_policy || "auto";
+    const env = status.environment || {};
+    const loaded = (status.models || []).filter((item) => item.status?.value === "loaded" || item.loaded === true).length;
+    statusWidget.value = [
+      status.running ? t(`✅ llama.cpp router running (PID ${status.pid || "?"})`, `✅ llama.cpp router 正在运行（PID ${status.pid || "?"}）`) : t("⏹️ llama.cpp router stopped", "⏹️ llama.cpp router 未启动"),
+      env.executable ? t(`Executable (${env.executable_source || "unknown"}): ${env.executable}`, `可执行文件（${env.executable_source || "未知来源"}）：${env.executable}`) : t("Executable: not found", "可执行文件：未找到"),
+      t(`Private runtime: ${env.private_runtime_installed ? "installed" : "not installed"}`, `节点私有运行时：${env.private_runtime_installed ? "已安装" : "未安装"}`),
+      t(`GGUF: ${env.gguf_count || 0}, mmproj: ${env.mmproj_count || 0}, loaded: ${loaded}`, `GGUF：${env.gguf_count || 0}，mmproj：${env.mmproj_count || 0}，已加载：${loaded}`),
+      env.router_capable === false && env.executable ? t("⚠️ Router API flags were not detected.", "⚠️ 未检测到 Router API 参数。") : "",
+      status.error || ""
+    ].filter(Boolean).join("\n");
+    node.setDirtyCanvas(true, true);
+  }
 
   let pollInterval = null;
 
@@ -215,6 +283,7 @@ export async function setupProviderManager(node) {
   async function loadSelectedProviderConfig() {
     stopPolling();
     const provider = providerWidget.value;
+    toggleLlamaWidgets();
     if (!provider || provider === "custom_provider") {
       baseUrlWidget.value = "";
       apiKeyWidget.value = "";
@@ -232,6 +301,20 @@ export async function setupProviderManager(node) {
     node.setDirtyCanvas(true, true);
 
     try {
+      if (provider === "llama_cpp") {
+        baseUrlWidget.value = t("Managed automatically", "由项目自动管理");
+        apiKeyWidget.value = "";
+        chatBackendWidget.value = "openai_compatible";
+        chatBackendConfigurable = false;
+        supportsChatWidget.value = true;
+        supportsImageWidget.value = false;
+        supportsVideoWidget.value = false;
+        const llamaResponse = await api.fetchApi("/llm-mini/llama/status");
+        const llamaStatus = await llamaResponse.json();
+        if (!llamaResponse.ok) throw new Error(llamaStatus.error || `HTTP ${llamaResponse.status}`);
+        applyLlamaStatus(llamaStatus);
+        return;
+      }
       const response = await api.fetchApi(`/llm-mini/config/get?provider=${encodeURIComponent(provider)}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
@@ -329,6 +412,28 @@ export async function setupProviderManager(node) {
     node.setDirtyCanvas(true, true);
 
     try {
+      if (provider === "llama_cpp") {
+        if (newId) throw new Error(t("The built-in llama_cpp provider cannot be renamed.", "内置 llama_cpp 提供商不能重命名。"));
+        const llamaResponse = await api.fetchApi("/llm-mini/llama/config/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            executable: String(llamaExecutableWidget.value || "").trim(),
+            models_dir: String(llamaModelsDirWidget.value || "").trim(),
+            context_size: Number(llamaContextWidget.value),
+            n_gpu_layers: Number(llamaGpuLayersWidget.value),
+            models_max: Number(llamaModelsMaxWidget.value),
+            default_unload_policy: unloadPolicyValue(llamaUnloadWidget.value),
+            idle_unload_seconds: Number(llamaIdleWidget.value),
+            comfy_memory_policy: llamaMemoryWidget.value
+          })
+        });
+        const llamaData = await llamaResponse.json();
+        if (!llamaResponse.ok) throw new Error(llamaData.error || `HTTP ${llamaResponse.status}`);
+        alert(t("llama.cpp configuration saved.", "llama.cpp 配置已保存。"));
+        await loadSelectedProviderConfig();
+        return;
+      }
       const response = await api.fetchApi("/llm-mini/config/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -361,6 +466,10 @@ export async function setupProviderManager(node) {
     const provider = providerWidget.value;
     if (!provider || provider === "custom_provider") {
       alert(t("Please select a valid provider to delete.", "请选择要删除的有效提供商。"));
+      return;
+    }
+    if (provider === "llama_cpp") {
+      alert(t("The built-in llama_cpp provider cannot be deleted.", "内置 llama_cpp 提供商不能删除。"));
       return;
     }
 
@@ -515,6 +624,91 @@ export async function setupProviderManager(node) {
     }
   });
 
+  const llamaCheckLabel = t("Check llama.cpp", "检查 llama.cpp");
+  node.addWidget("button", llamaCheckLabel, llamaCheckLabel, async () => {
+    if (providerWidget.value !== "llama_cpp") {
+      alert(t("Select the llama_cpp provider first.", "请先选择 llama_cpp 提供商。"));
+      return;
+    }
+    statusWidget.value = t("Checking llama.cpp...", "正在检查 llama.cpp...");
+    node.setDirtyCanvas(true, true);
+    try {
+      const response = await api.fetchApi("/llm-mini/llama/status");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      applyLlamaStatus(data);
+    } catch (error) {
+      statusWidget.value = t(`Check failed: ${error.message}`, `检查失败：${error.message}`);
+      node.setDirtyCanvas(true, true);
+    }
+  });
+
+  const llamaHelpLabel = t("Copy Install Help", "复制安装帮助");
+  node.addWidget("button", llamaHelpLabel, llamaHelpLabel, async () => {
+    if (providerWidget.value !== "llama_cpp") {
+      alert(t("Select the llama_cpp provider first.", "请先选择 llama_cpp 提供商。"));
+      return;
+    }
+    try {
+      const response = await api.fetchApi("/llm-mini/llama/install-help?backend=auto&shell=auto");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      const text = [...(data.warnings || []), ...(data.private_install_commands || []), "", ...(data.commands || []), ...(data.config_examples || [])].join("\n");
+      copyToClipboard(text);
+      alert(t("Installation help copied. Commands were not executed.", "安装帮助已复制，未执行任何命令。"));
+    } catch (error) {
+      alert(t(`Copy failed: ${error.message}`, `复制失败：${error.message}`));
+    }
+  });
+
+  const llamaStartLabel = t("Start llama.cpp", "启动 llama.cpp");
+  node.addWidget("button", llamaStartLabel, llamaStartLabel, async () => {
+    if (providerWidget.value !== "llama_cpp") {
+      alert(t("Select the llama_cpp provider first.", "请先选择 llama_cpp 提供商。"));
+      return;
+    }
+    try {
+      const response = await api.fetchApi("/llm-mini/llama/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      await loadSelectedProviderConfig();
+    } catch (error) {
+      alert(t(`Start failed: ${error.message}`, `启动失败：${error.message}`));
+    }
+  });
+
+  const llamaStopLabel = t("Stop llama.cpp", "停止 llama.cpp");
+  node.addWidget("button", llamaStopLabel, llamaStopLabel, async () => {
+    if (providerWidget.value !== "llama_cpp") {
+      alert(t("Select the llama_cpp provider first.", "请先选择 llama_cpp 提供商。"));
+      return;
+    }
+    try {
+      const response = await api.fetchApi("/llm-mini/llama/stop", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      await loadSelectedProviderConfig();
+    } catch (error) {
+      alert(t(`Stop failed: ${error.message}`, `停止失败：${error.message}`));
+    }
+  });
+
+  const llamaModelsLabel = t("Manage llama.cpp Models", "管理 llama.cpp 模型");
+  node.addWidget("button", llamaModelsLabel, llamaModelsLabel, async () => {
+    if (providerWidget.value !== "llama_cpp") {
+      alert(t("Select the llama_cpp provider first.", "请先选择 llama_cpp 提供商。"));
+      return;
+    }
+    try {
+      const response = await api.fetchApi("/llm-mini/llama/status");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      showLlamaCppManagerModal(data, applyLlamaStatus);
+    } catch (error) {
+      alert(t(`Load failed: ${error.message}`, `加载失败：${error.message}`));
+    }
+  });
+
   const submitCodeLabel = t("Submit Code or Redirect URL", "手动输入授权码或回调地址");
   node.addWidget("button", submitCodeLabel, submitCodeLabel, async () => {
     const provider = providerWidget.value;
@@ -574,6 +768,17 @@ export async function setupProviderManager(node) {
       alert(t("Please select a valid provider first.", "请先选择一个有效的提供商。"));
       return;
     }
+    if (provider === "llama_cpp") {
+      try {
+        const response = await api.fetchApi("/llm-mini/llama/status");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        showLlamaCppManagerModal(data, applyLlamaStatus);
+      } catch (error) {
+        alert(t(`Refresh failed: ${error.message}`, `刷新失败：${error.message}`));
+      }
+      return;
+    }
 
     statusWidget.value = t("Fetching model list...", "正在获取模型列表...");
     node.setDirtyCanvas(true, true);
@@ -628,6 +833,10 @@ export async function setupProviderManager(node) {
     const provider = providerWidget.value;
     if (!provider || provider === "custom_provider") {
       alert(t("Please select a valid provider first.", "请先选择一个有效的提供商。"));
+      return;
+    }
+    if (provider === "llama_cpp") {
+      alert(t("Place GGUF files in the configured models directory, then refresh the llama.cpp model list.", "请将 GGUF 文件放入配置的模型目录，然后刷新 llama.cpp 模型列表。"));
       return;
     }
     const newModel = customModelInput.value.trim();

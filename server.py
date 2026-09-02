@@ -48,7 +48,13 @@ def register_routes() -> None:
 
     def route_error(exc: Exception, **payload):
         payload["error"] = str(exc)
-        return web.json_response(payload, status=400 if isinstance(exc, ValueError) else 500)
+        try:
+            from .core.llama_cpp import LlamaCppConflictError
+            is_conflict = isinstance(exc, LlamaCppConflictError)
+        except Exception:
+            is_conflict = False
+        status = 409 if is_conflict else 400 if isinstance(exc, ValueError) else 500
+        return web.json_response(payload, status=status)
 
     def json_bool(value, default=False):
         if value is None:
@@ -241,6 +247,95 @@ def register_routes() -> None:
             
             from .core.oauth import exchange_manual_code
             await asyncio.to_thread(exchange_manual_code, provider, code)
+            return web.json_response({"success": True})
+        except Exception as exc:
+            return route_error(exc)
+
+    @PromptServer.instance.routes.get("/llm-mini/llama/status")
+    async def llama_status_route(request):
+        try:
+            from .core.llama_cpp import RUNTIME
+
+            return web.json_response(await asyncio.to_thread(RUNTIME.status))
+        except Exception as exc:
+            return route_error(exc)
+
+    @PromptServer.instance.routes.get("/llm-mini/llama/install-help")
+    async def llama_install_help_route(request):
+        try:
+            from .core.llama_cpp import install_help
+
+            backend = request.query.get("backend", "auto")
+            shell = request.query.get("shell", "auto")
+            ref = request.query.get("ref", "master")
+            return web.json_response(await asyncio.to_thread(install_help, backend, shell, ref))
+        except Exception as exc:
+            return route_error(exc)
+
+    @PromptServer.instance.routes.post("/llm-mini/llama/config/save")
+    async def llama_config_save_route(request):
+        try:
+            from .core.llama_cpp import RUNTIME, save_llama_cpp_settings
+
+            if RUNTIME.running:
+                from .core.llama_cpp import LlamaCppConflictError
+
+                raise LlamaCppConflictError("Stop llama-server before changing its runtime configuration.")
+            data = await request.json()
+            settings = await asyncio.to_thread(save_llama_cpp_settings, data)
+            return web.json_response({"success": True, "settings": settings.__dict__})
+        except Exception as exc:
+            return route_error(exc)
+
+    @PromptServer.instance.routes.post("/llm-mini/llama/start")
+    async def llama_start_route(request):
+        try:
+            from .core.llama_cpp import RUNTIME
+
+            return web.json_response(await asyncio.to_thread(RUNTIME.start))
+        except Exception as exc:
+            return route_error(exc)
+
+    @PromptServer.instance.routes.post("/llm-mini/llama/stop")
+    async def llama_stop_route(request):
+        try:
+            from .core.llama_cpp import RUNTIME
+
+            await asyncio.to_thread(RUNTIME.stop)
+            return web.json_response({"success": True})
+        except Exception as exc:
+            return route_error(exc)
+
+    @PromptServer.instance.routes.post("/llm-mini/llama/models/refresh")
+    async def llama_models_refresh_route(request):
+        try:
+            from .core.llama_cpp import RUNTIME
+
+            models = await asyncio.to_thread(RUNTIME.models, True)
+            return web.json_response({"models": models})
+        except Exception as exc:
+            return route_error(exc, models=[])
+
+    @PromptServer.instance.routes.post("/llm-mini/llama/models/load")
+    async def llama_model_load_route(request):
+        try:
+            from .core.llama_cpp import RUNTIME
+
+            data = await request.json()
+            model = str(data.get("model", "") or "").strip()
+            record = await asyncio.to_thread(RUNTIME.load_model, model)
+            return web.json_response({"success": True, "model": record})
+        except Exception as exc:
+            return route_error(exc)
+
+    @PromptServer.instance.routes.post("/llm-mini/llama/models/unload")
+    async def llama_model_unload_route(request):
+        try:
+            from .core.llama_cpp import RUNTIME
+
+            data = await request.json()
+            model = str(data.get("model", "") or "").strip()
+            await asyncio.to_thread(RUNTIME.unload_model, model)
             return web.json_response({"success": True})
         except Exception as exc:
             return route_error(exc)

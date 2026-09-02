@@ -32,6 +32,7 @@
 - API Chat 的提供商下拉框只显示已配置有效 API Key 或 OAuth 凭据的聊天提供商。
 - 支持 API Key、环境变量、Codex OAuth、xAI OAuth 凭据路径。
 - 支持 OpenAI-compatible、Claude、Gemini、xAI 和 Codex 聊天接口。
+- 支持项目托管的 llama.cpp 本地 GGUF 文本/视觉模型，以及按次、常驻或空闲卸载策略。
 - 支持 `persona/*.txt` 人格面具作为系统提示词。
 - 提供独立的“翻译”节点，可选择提供商、模型、输入语言、输出语言、语气和语气程度。
 - OpenAI 与 Codex 图像使用独立节点，后端按提供商拆分。
@@ -54,6 +55,28 @@
 7. 可通过 `自定义模型 ID` 添加接口未返回但可用的模型名，并保存到该提供商的默认模型列表。
 
 API Chat 节点也提供同样的模型列表快捷配置入口，用于刷新并配置当前聊天提供商的模型列表；完整的提供商新增、删除、OAuth 和能力声明仍建议在 Provider Manager 中完成。
+
+### llama.cpp 本地模型
+
+llama.cpp 运行时可私有安装到本插件的 `runtime/llama_cpp`（已被 Git 忽略），GGUF 仍共享放在 `ComfyUI/models/LLM`。Provider Manager 不会静默安装；只有手工执行 `install-runtime` 才会下载或编译。发现优先级为“配置的绝对路径 → 节点私有运行时 → `PATH`”。
+
+```bash
+python3 llama_cpp_setup.py check
+python3 llama_cpp_setup.py print-install
+python3 llama_cpp_setup.py print-install --backend auto
+python3 llama_cpp_setup.py print-install --backend cuda --shell bash
+python3 llama_cpp_setup.py install-runtime --backend auto --dry-run
+python3 llama_cpp_setup.py install-runtime --backend auto
+```
+
+- WSL/Linux：使用 Linux 原生运行时；检测到 NVIDIA 驱动、CUDA Toolkit 和 `nvcc` 时，从固定版本源码构建 CUDA，否则选择官方 Vulkan（系统有 `vulkaninfo`）或 CPU 包。
+- Windows Portable：在插件目录执行 `..\..\..\python_embeded\python.exe llama_cpp_setup.py install-runtime --backend auto`。
+- Windows Desktop：用该桌面版实际启动 ComfyUI 的 Python 执行同一命令。NVIDIA 环境使用经过 SHA256 校验的官方 Windows CUDA 预编译包。
+- `--offline` 只使用已校验的下载缓存；`--force` 原子替换已有私有运行时。安装器不下载模型。
+
+将 GGUF 放入默认的 `ComfyUI/models/LLM`，或在 Provider Manager 选择 `llama_cpp` 后设置绝对模型目录。视觉模型应放在独立子目录中，主 GGUF 与文件名以 `mmproj` 开头的投影 GGUF 放在一起。Provider Manager 提供“检查 llama.cpp”“复制安装帮助”、启动/停止、刷新、加载和卸载；router 仅监听 `127.0.0.1`，使用动态端口和临时 API Key。
+
+API Chat 和翻译节点选择 `llama_cpp` 后会显示本地卸载策略：`after_run` 在活动请求归零后卸载，`keep_warm` 保持驻留，`idle` 在配置的空闲时间后卸载。节点默认使用 `after_run`；旧工作流中的 `inherit` 会迁移为该策略。默认显存策略 `auto` 仅在预计显存不足时尝试释放 ComfyUI 模型；设为 `keep` 可禁止主动释放。
 
 ### 文件和命令行备用配置
 

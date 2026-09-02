@@ -9,6 +9,9 @@ from ..providers.openai_compatible import ApiChatClient
 from ..core.status import StatusUpdater, get_unique_id
 
 
+LOCAL_UNLOAD_POLICIES = ["after_run", "keep_warm", "idle"]
+
+
 def _chat_fingerprint(is_locked=True):
     return "locked" if is_locked else uuid4().hex
 
@@ -95,6 +98,12 @@ class ApiChatNode(IO.ComfyNode):
                 IO.Float.Input("temperature", default=0.7, min=0.0, max=2.0, step=0.1),
                 IO.Int.Input("max_tokens", default=2048, min=1, max=128000, step=128),
                 IO.Boolean.Input("is_locked", default=True),
+                IO.Combo.Input(
+                    "local_unload_policy",
+                    options=LOCAL_UNLOAD_POLICIES,
+                    default="after_run",
+                    tooltip="llama.cpp only. Inherit the provider default or override model unloading for this workflow.",
+                ),
                 IO.Boolean.Input(
                     "retain_images_in_history",
                     default=False,
@@ -123,7 +132,7 @@ class ApiChatNode(IO.ComfyNode):
         return _chat_fingerprint(is_locked)
 
     @classmethod
-    def execute(cls, system_prompt_input="", history_json="", images=None, provider=None, model_name=None, system_prompt="", user_prompt="", temperature=0.7, max_tokens=2048, is_locked=True, retain_images_in_history=False, thinking_level="auto", image_url="", stream=False, unique_id=None):
+    def execute(cls, system_prompt_input="", history_json="", images=None, provider=None, model_name=None, system_prompt="", user_prompt="", temperature=0.7, max_tokens=2048, is_locked=True, local_unload_policy="after_run", retain_images_in_history=False, thinking_level="auto", image_url="", stream=False, unique_id=None):
         node_id = get_unique_id(cls, unique_id)
         try:
             with StatusUpdater(node_id, f"Chatting ({provider})"):
@@ -160,6 +169,7 @@ class ApiChatNode(IO.ComfyNode):
                     stream=stream,
                     thinking_level=thinking_level,
                     retain_images_in_history=retain_images_in_history,
+                    local_unload_policy=local_unload_policy,
                 )
                 return (res[0], res[1])
         except Exception as exc:
@@ -201,6 +211,12 @@ class TranslationNode(IO.ComfyNode):
                 IO.Combo.Input("provider", options=providers, default=default_provider),
                 IO.Combo.Input("model_name", options=default_models, default=default_models[0]),
                 IO.Boolean.Input("is_locked", default=True),
+                IO.Combo.Input(
+                    "local_unload_policy",
+                    options=LOCAL_UNLOAD_POLICIES,
+                    default="after_run",
+                    tooltip="llama.cpp only. Inherit the provider default or override model unloading for this workflow.",
+                ),
             ],
             outputs=[IO.String.Output("text")],
             hidden=[IO.Hidden.unique_id],
@@ -225,6 +241,7 @@ class TranslationNode(IO.ComfyNode):
         provider,
         model_name,
         is_locked=True,
+        local_unload_policy="after_run",
         unique_id=None,
     ):
         node_id = get_unique_id(cls, unique_id)
@@ -249,6 +266,7 @@ class TranslationNode(IO.ComfyNode):
                     system_prompt=system_prompt,
                     temperature=0.2,
                     max_tokens=8192,
+                    local_unload_policy=local_unload_policy,
                 )
                 return IO.NodeOutput(response)
         except Exception as exc:

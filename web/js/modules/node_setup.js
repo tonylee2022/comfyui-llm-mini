@@ -16,6 +16,7 @@ export function setupNodeByType(node, nodeName) {
     node.size = [300, node.computeSize()[1]];
     setTimeout(() => refreshProviderWidgets(node), 50);
     setupApiChatModelTools(node);
+    setupLocalUnloadPolicy(node);
   }
   
   if (nodeName === "LLMMiniLoadPersona") {
@@ -60,7 +61,11 @@ export function setupNodeByType(node, nodeName) {
     updateCombo(node, "target_language", targetLanguages);
     updateCombo(node, "tone", tones);
     node.size = [300, node.computeSize()[1]];
-    setTimeout(() => refreshProviderWidgets(node), 50);
+    setTimeout(async () => {
+      await refreshProviderWidgets(node);
+      fitTranslationNodeHeight(node);
+    }, 50);
+    setupLocalUnloadPolicy(node, () => fitTranslationNodeHeight(node));
   }
   
   if (nodeName === "LLMMiniPersonaManager") {
@@ -101,6 +106,66 @@ export function setupNodeByType(node, nodeName) {
       };
     }
   }
+}
+
+function setWidgetVisible(node, widget, visible) {
+  if (!widget) return;
+  if (!Object.prototype.hasOwnProperty.call(widget, "__llmMiniOriginalType")) {
+    widget.__llmMiniOriginalType = widget.type;
+    widget.__llmMiniOriginalComputeSize = widget.computeSize;
+  }
+  widget.type = widget.__llmMiniOriginalType;
+  widget.computeSize = widget.__llmMiniOriginalComputeSize;
+  widget.hidden = !visible;
+  widget.options = widget.options || {};
+  widget.options.hidden = !visible;
+  node.size = [node.size?.[0] || 300, node.computeSize()[1]];
+  node.setDirtyCanvas(true, true);
+}
+
+function fitTranslationNodeHeight(node) {
+  const applySize = () => {
+    const width = node.size?.[0] || 300;
+    const height = node.computeSize()[1];
+    if (typeof node.setSize === "function") {
+      node.setSize([width, height]);
+    } else {
+      node.size = [width, height];
+    }
+    node.setDirtyCanvas(true, true);
+  };
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(applySize);
+  } else {
+    setTimeout(applySize, 0);
+  }
+}
+
+function setupLocalUnloadPolicy(node, afterVisibilityChange = null) {
+  const policyWidget = findWidget(node, "local_unload_policy");
+  if (!policyWidget) return;
+  const canonicalPolicies = ["after_run", "keep_warm", "idle"];
+  const policyValues = t(
+    canonicalPolicies,
+    ["执行后卸载", "保持驻留", "空闲后卸载"]
+  );
+  const canonicalize = (value) => ({
+    "执行后卸载": "after_run",
+    "保持驻留": "keep_warm",
+    "空闲后卸载": "idle",
+    "inherit": "after_run"
+  })[value] || (canonicalPolicies.includes(value) ? value : "after_run");
+  const localize = (value) => policyValues[canonicalPolicies.indexOf(canonicalize(value))];
+  policyWidget.options = policyWidget.options || {};
+  policyWidget.options.values = policyValues;
+  policyWidget.value = localize(policyWidget.value);
+  policyWidget.serializeValue = () => canonicalize(policyWidget.value);
+  node.__llmMiniProviderChanged = (provider) => {
+    policyWidget.value = localize(policyWidget.value);
+    setWidgetVisible(node, policyWidget, provider === "llama_cpp");
+    if (afterVisibilityChange) afterVisibilityChange();
+  };
+  node.__llmMiniProviderChanged(findWidget(node, "provider")?.value);
 }
 
 function updateChatNodesForProvider(node, provider, models) {
@@ -181,6 +246,10 @@ function setupApiChatModelTools(node) {
     const provider = currentChatProvider(node);
     if (!provider) {
       alert(t("Please select a provider first.", "请先选择一个提供商。"));
+      return;
+    }
+    if (provider === "llama_cpp") {
+      alert(t("Place GGUF files in the configured llama.cpp models directory, then refresh the list.", "请将 GGUF 文件放入已配置的 llama.cpp 模型目录，然后刷新列表。"));
       return;
     }
     const newModel = String(customModelInput.value || "").trim();

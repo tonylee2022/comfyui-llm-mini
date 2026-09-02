@@ -646,3 +646,130 @@ export function showDeviceAuthModal(provider, userCode, verificationUri, onCance
     }
   };
 }
+
+export function showLlamaCppManagerModal(initialStatus, onChanged) {
+  injectStyles();
+  document.getElementById("llm-mini-llama-modal-overlay")?.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "llm-mini-llama-modal-overlay";
+  overlay.className = "llm-mini-modal-overlay";
+  const modal = document.createElement("div");
+  modal.className = "llm-mini-modal";
+  overlay.appendChild(modal);
+
+  const header = document.createElement("div");
+  header.className = "llm-mini-modal-header";
+  const title = document.createElement("h3");
+  title.className = "llm-mini-modal-title";
+  title.textContent = t("llama.cpp Local Models", "llama.cpp 本地模型");
+  const closeButton = document.createElement("button");
+  closeButton.className = "llm-mini-modal-close";
+  closeButton.textContent = "×";
+  header.append(title, closeButton);
+  modal.appendChild(header);
+
+  const body = document.createElement("div");
+  body.className = "llm-mini-modal-body";
+  modal.appendChild(body);
+
+  const footer = document.createElement("div");
+  footer.className = "llm-mini-modal-footer";
+  const refreshButton = document.createElement("button");
+  refreshButton.className = "llm-mini-modal-btn llm-mini-modal-btn-apply";
+  refreshButton.textContent = t("Refresh", "刷新");
+  const closeFooterButton = document.createElement("button");
+  closeFooterButton.className = "llm-mini-modal-btn llm-mini-modal-btn-cancel";
+  closeFooterButton.textContent = t("Close", "关闭");
+  footer.append(refreshButton, closeFooterButton);
+  modal.appendChild(footer);
+
+  let status = initialStatus || {};
+  const request = async (path, model = null) => {
+    const response = await api.fetchApi(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(model ? { model } : {})
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    return data;
+  };
+
+  const refresh = async (reload = false) => {
+    body.textContent = t("Loading...", "正在加载...");
+    try {
+      if (reload) await request("/llm-mini/llama/models/refresh");
+      const response = await api.fetchApi("/llm-mini/llama/status");
+      status = await response.json();
+      if (!response.ok) throw new Error(status.error || `HTTP ${response.status}`);
+      render();
+      if (onChanged) onChanged(status);
+    } catch (error) {
+      body.textContent = t(`Failed: ${error.message}`, `失败：${error.message}`);
+    }
+  };
+
+  const render = () => {
+    body.textContent = "";
+    const summary = document.createElement("div");
+    summary.className = "llm-mini-modal-instructions";
+    summary.style.textAlign = "left";
+    summary.textContent = status.running
+      ? t(`Router is running (PID ${status.pid || "?"}).`, `Router 正在运行（PID ${status.pid || "?"}）。`)
+      : t("Router is stopped. Start it before managing models.", "Router 未启动，请先启动后管理模型。");
+    body.appendChild(summary);
+
+    const models = Array.isArray(status.models) ? status.models : [];
+    if (!models.length) {
+      const empty = document.createElement("div");
+      empty.className = "llm-mini-modal-instructions";
+      empty.textContent = t("No GGUF models reported by the router.", "Router 未发现 GGUF 模型。");
+      body.appendChild(empty);
+      return;
+    }
+
+    models.forEach((model) => {
+      const modelId = String(model.id || model.model || "");
+      const loaded = model.status?.value === "loaded" || model.loaded === true;
+      const modalities = model.architecture?.input_modalities || [];
+      const active = Number(status.active_requests?.[modelId] || 0);
+      const row = document.createElement("div");
+      row.className = "llm-mini-modal-item";
+      row.style.cursor = "default";
+      const label = document.createElement("span");
+      label.className = "llm-mini-modal-modelname";
+      label.style.flex = "1";
+      label.textContent = `${modelId} · ${loaded ? t("loaded", "已加载") : t("unloaded", "未加载")} · ${modalities.join("/") || "text"}${active ? ` · active ${active}` : ""}`;
+      const action = document.createElement("button");
+      action.className = `llm-mini-modal-btn ${loaded ? "llm-mini-modal-btn-cancel" : "llm-mini-modal-btn-apply"}`;
+      action.textContent = loaded ? t("Unload", "卸载") : t("Load", "加载");
+      action.disabled = active > 0;
+      action.addEventListener("click", async () => {
+        action.disabled = true;
+        try {
+          await request(`/llm-mini/llama/models/${loaded ? "unload" : "load"}`, modelId);
+          await refresh(false);
+        } catch (error) {
+          alert(t(`Operation failed: ${error.message}`, `操作失败：${error.message}`));
+          action.disabled = false;
+        }
+      });
+      row.append(label, action);
+      body.appendChild(row);
+    });
+  };
+
+  const close = () => {
+    overlay.classList.remove("active");
+    setTimeout(() => overlay.remove(), 250);
+  };
+  closeButton.addEventListener("click", close);
+  closeFooterButton.addEventListener("click", close);
+  refreshButton.addEventListener("click", () => refresh(true));
+  document.body.appendChild(overlay);
+  overlay.offsetWidth;
+  overlay.classList.add("active");
+  render();
+  return { close };
+}

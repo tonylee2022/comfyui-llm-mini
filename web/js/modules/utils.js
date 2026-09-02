@@ -89,7 +89,13 @@ export async function refreshProviderWidgets(node) {
         providerWidget.callback = function () {
           if (this.__llmMiniOriginalCallback) this.__llmMiniOriginalCallback.apply(this, arguments);
           updateCredentialSourcesAndModels(node, this.__llmMiniProviders || []);
+          if (typeof node.__llmMiniProviderChanged === "function") {
+            node.__llmMiniProviderChanged(this.value);
+          }
         };
+      }
+      if (typeof node.__llmMiniProviderChanged === "function") {
+        node.__llmMiniProviderChanged(providerWidget.value);
       }
     }
   } catch (error) {

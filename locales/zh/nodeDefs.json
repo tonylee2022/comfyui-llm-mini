@@ -15,7 +15,8 @@
       "thinking_level": { "name": "思考级别" },
       "images": { "name": "参考图像", "tooltip": "可选参考图（支持多张图或图像批次）。连接后会自动增加新的图像输入。" },
       "image_url": { "name": "图像 URL" },
-      "stream": { "name": "流式输出" }
+      "stream": { "name": "流式输出" },
+      "local_unload_policy": { "name": "本地模型卸载策略", "tooltip": "仅用于 llama.cpp：执行后卸载、保持驻留或空闲后卸载。" }
     },
     "outputs": {
       "0": { "name": "助手回复" },
@@ -42,7 +43,8 @@
       "tone_degree": { "name": "语气程度", "tooltip": "0 尽量保持原文语气，10 强烈采用指定语气。" },
       "provider": { "name": "提供商" },
       "model_name": { "name": "模型" },
-      "is_locked": { "name": "锁定缓存", "tooltip": "开启时相同输入不会重复执行；关闭时每次都会重新请求。" }
+      "is_locked": { "name": "锁定缓存", "tooltip": "开启时相同输入不会重复执行；关闭时每次都会重新请求。" },
+      "local_unload_policy": { "name": "本地模型卸载策略", "tooltip": "仅用于 llama.cpp：执行后卸载、保持驻留或空闲后卸载。" }
     },
     "outputs": {
       "0": { "name": "文本" }

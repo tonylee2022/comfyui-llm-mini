@@ -112,6 +112,10 @@ def call_codex_responses(api_key: str, model: str, messages: list[dict]) -> str:
 def list_models(provider: str, api_key: str = "", base_url: str = "") -> list[str]:
     info = resolve_provider(provider, api_key, base_url)
     backend = info.get("backend", "openai_compatible")
+    if backend == "llama_cpp":
+        from ..core.llama_cpp import RUNTIME
+
+        return [str(item.get("id")) for item in RUNTIME.models(reload=True) if item.get("id")]
     if backend == "anthropic":
         return list_anthropic_models(info.get("api_key", ""), info.get("default_models", []), base_url=info.get("base_url", ""))
     if backend == "gemini":
@@ -185,7 +189,7 @@ class ApiChatClient:
             self.model_name
         )
         base_url = normalize_base_url(base_url)
-        if not api_key and self.provider != "ollama":
+        if not api_key and self.provider not in {"ollama", "llama_cpp"} and backend != "llama_cpp":
             raise RuntimeError("No API key or OAuth token found for selected provider.")
         return api_key, base_url, oauth_provider, backend
 
@@ -234,7 +238,7 @@ class ApiChatClient:
                 response_text = response_text.replace(match.group(0), "").strip()
         return reasoning, response_text
 
-    def send(self, user_prompt: str, system_prompt: str, temperature: float, max_tokens: int, history_json: str = "", image=None, image_url: str = "", stream: bool = False, extra_parameters: dict | None = None, thinking_level: str = "auto", retain_images_in_history: bool = False) -> tuple[str, str, str]:
+    def send(self, user_prompt: str, system_prompt: str, temperature: float, max_tokens: int, history_json: str = "", image=None, image_url: str = "", stream: bool = False, extra_parameters: dict | None = None, thinking_level: str = "auto", retain_images_in_history: bool = False, local_unload_policy: str = "inherit") -> tuple[str, str, str]:
         extra_parameters = self._prepare_extra_parameters(extra_parameters, thinking_level)
         api_key, base_url, oauth_provider, backend = self._resolve_credentials()
         if backend == "gemini" and thinking_level:
@@ -243,7 +247,38 @@ class ApiChatClient:
         messages = self._build_messages(system_prompt, user_prompt, history_json, image, image_url)
         api_reasoning = ""
         
-        if backend == "anthropic":
+        if backend == "llama_cpp":
+            from openai import OpenAI
+            from ..core.llama_cpp import RUNTIME
+
+            has_images = any(
+                isinstance(message.get("content"), list)
+                and any(item.get("type") == "image_url" for item in message.get("content", []))
+                for message in messages
+            )
+            with RUNTIME.model_session(self.model_name, local_unload_policy, has_images=has_images) as (local_base_url, local_api_key):
+                client = OpenAI(api_key=local_api_key, base_url=local_base_url)
+                response = client.chat.completions.create(
+                    **normalize_chat_kwargs({"model": self.model_name, "messages": messages, "temperature": temperature, "max_tokens": max_tokens, "stream": stream, **extra_parameters})
+                )
+                if stream:
+                    content_chunks = []
+                    reasoning_chunks = []
+                    for chunk in response:
+                        check_interrupted()
+                        if chunk.choices:
+                            delta = chunk.choices[0].delta
+                            content_chunks.append(delta.content or "")
+                            r_content = getattr(delta, "reasoning_content", None)
+                            if r_content:
+                                reasoning_chunks.append(r_content)
+                    response_text = "".join(content_chunks)
+                    api_reasoning = "".join(reasoning_chunks)
+                else:
+                    message = response.choices[0].message
+                    response_text = message.content or ""
+                    api_reasoning = getattr(message, "reasoning_content", None) or ""
+        elif backend == "anthropic":
             response_text = send_anthropic_chat(api_key, self.model_name, messages, temperature, max_tokens, stream, extra_parameters, base_url=base_url)
         elif backend == "gemini":
             response_text = send_gemini_sdk_chat(api_key, self.model_name, messages, temperature, max_tokens, extra_parameters, base_url=base_url)

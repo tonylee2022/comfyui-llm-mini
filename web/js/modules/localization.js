@@ -11,6 +11,7 @@ const translations = {
   "is_locked": { zh: "锁定缓存", en: "Lock Cache" },
   "retain_images_in_history": { zh: "历史保留图像", en: "Retain Images in History" },
   "stream": { zh: "流式输出", en: "Stream" },
+  "local_unload_policy": { zh: "本地模型卸载策略", en: "Local Unload Policy" },
   "system_prompt_input": { zh: "加载人格面具", en: "Load Persona" },
   "image": { zh: "图像", en: "Image" },
   "images": { zh: "参考图像", en: "Reference Images" },
