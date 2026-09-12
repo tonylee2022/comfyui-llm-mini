@@ -7,7 +7,7 @@ import logging
 logger = logging.getLogger("LLMMini")
 
 from .core.config import has_api_or_oauth_credentials, has_provider_credentials, load_providers, provider_credential_status, resolve_provider, validate_provider_id
-from .core.persona import persona_path
+from .core.persona import builtin_persona_path, local_persona_path, resolve_persona_path
 from .providers.openai_compatible import list_models
 
 _REGISTERED = False
@@ -383,11 +383,17 @@ def register_routes() -> None:
             name = data.get("name", "").strip()
             if not name:
                 return web.json_response({"content": ""})
-            path = persona_path(name)
-            if not path.exists():
-                return web.json_response({"content": ""})
+            path, source = resolve_persona_path(name)
+            if path is None:
+                return web.json_response({"error": f"Persona was not found: {name}"}, status=404)
             content = path.read_text(encoding="utf-8")
-            return web.json_response({"name": name, "content": content})
+            return web.json_response({
+                "name": name,
+                "content": content,
+                "source": source,
+                "editable": source == "local",
+                "overrides_builtin": source == "local" and builtin_persona_path(name).is_file(),
+            })
         except Exception as exc:
             return route_error(exc)
 
@@ -399,11 +405,16 @@ def register_routes() -> None:
             content = data.get("content", "")
             if not name:
                 return web.json_response({"error": "Persona name cannot be empty"}, status=400)
-            from .core.config import PERSONA_DIR, persona_files
-            PERSONA_DIR.mkdir(exist_ok=True)
-            path = persona_path(name)
+            from .core.config import PERSONA_LOCAL_DIR, persona_files
+            PERSONA_LOCAL_DIR.mkdir(exist_ok=True)
+            path = local_persona_path(name)
             path.write_text(content, encoding="utf-8")
-            return web.json_response({"success": True, "personas": persona_files()})
+            return web.json_response({
+                "success": True,
+                "personas": persona_files(),
+                "source": "local",
+                "overrides_builtin": builtin_persona_path(name).is_file(),
+            })
         except Exception as exc:
             return route_error(exc)
 
@@ -415,10 +426,18 @@ def register_routes() -> None:
             if not name:
                 return web.json_response({"error": "Persona name cannot be empty"}, status=400)
             from .core.config import persona_files
-            path = persona_path(name)
-            if path.exists():
-                path.unlink()
-            return web.json_response({"success": True, "personas": persona_files()})
+            local_path = local_persona_path(name)
+            builtin_exists = builtin_persona_path(name).is_file()
+            if not local_path.is_file():
+                if builtin_exists:
+                    return web.json_response({"error": "Built-in personas cannot be deleted."}, status=403)
+                return web.json_response({"error": f"Persona was not found: {name}"}, status=404)
+            local_path.unlink()
+            return web.json_response({
+                "success": True,
+                "personas": persona_files(),
+                "restored_builtin": builtin_exists,
+            })
         except Exception as exc:
             return route_error(exc)
 

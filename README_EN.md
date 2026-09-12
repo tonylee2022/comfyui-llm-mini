@@ -33,7 +33,7 @@ Lightweight ComfyUI nodes for LLM provider access, personas, image generation, a
 - API key, environment variable, Codex OAuth, and xAI OAuth credential paths.
 - OpenAI-compatible, Claude, Gemini, xAI, and Codex chat providers.
 - Project-managed llama.cpp local GGUF text/vision models with per-run, warm, or idle unloading.
-- Persona `.txt` files as system prompt inputs.
+- Git-tracked built-in personas from `persona/*.txt` and Git-ignored local personas from `persona_local/*.txt` as system prompt inputs.
 - A dedicated Translation node with selectable provider, model, source language, target language, tone, and tone strength.
 - Separate OpenAI and Codex image nodes with provider-scoped backend implementations.
 - xAI Imagine and xAI Video nodes.
@@ -55,6 +55,10 @@ The recommended entry point is the `Provider Manager` node inside the ComfyUI ca
 7. Use `Custom Model ID` to add model names that are usable but not returned by the provider model-list endpoint.
 
 API Chat also includes the same model-list shortcut for the currently selected chat provider. Use Provider Manager for full provider creation, deletion, OAuth, and capability configuration.
+
+### Persona Management
+
+`persona/` contains built-in templates distributed and updated with the plugin and is read-only in Persona Manager. `persona_local/` contains user templates and is created automatically during installation, startup, or the first save. Saving edits to a built-in persona creates a same-name local override without modifying tracked files. Local overrides take precedence, and deleting one reveals the built-in version again. Creating, renaming, or deleting a local persona refreshes persona selectors on the current graph.
 
 ### llama.cpp Local Models
 

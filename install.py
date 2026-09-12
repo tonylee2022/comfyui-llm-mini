@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import llama_cpp_setup
 from core.llama_cpp import PRIVATE_RUNTIME_ROOT
 
 
 def main() -> int:
+    local_persona_dir = Path(__file__).resolve().parent / "persona_local"
+    try:
+        local_persona_dir.mkdir(exist_ok=True)
+        print(f"[comfyui-llm-mini] 本地人格面具目录已就绪: {local_persona_dir}")
+    except OSError as exc:
+        print(f"[comfyui-llm-mini] 无法创建本地人格面具目录: {exc}")
+
     installed = PRIVATE_RUNTIME_ROOT / "installed"
     if installed.is_dir():
         print(f"[comfyui-llm-mini] llama.cpp 私有运行时已存在，跳过首次安装: {installed}")

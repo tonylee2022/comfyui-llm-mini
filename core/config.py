@@ -17,6 +17,7 @@ PACKAGE_DIR = Path(__file__).resolve().parents[1]
 CONFIG_PATH = PACKAGE_DIR / "config.ini"
 PROVIDERS_PATH = PACKAGE_DIR / "config" / "providers.json"
 PERSONA_DIR = PACKAGE_DIR / "persona"
+PERSONA_LOCAL_DIR = PACKAGE_DIR / "persona_local"
 TEMP_DIR = PACKAGE_DIR / "temp"
 PROVIDER_ID_PATTERN = re.compile(r"^[^\W_][\w.-]{0,63}$", re.UNICODE)
 CHAT_BACKENDS = {"openai_compatible", "anthropic", "gemini", "xai", "codex", "llama_cpp"}
@@ -343,7 +344,8 @@ def provider_credential_status(provider: str, resolved: dict[str, Any] | None = 
 
 def persona_files() -> list[str]:
     PERSONA_DIR.mkdir(exist_ok=True)
-    names = sorted(p.stem for p in PERSONA_DIR.glob("*.txt"))
+    PERSONA_LOCAL_DIR.mkdir(exist_ok=True)
+    names = sorted({p.stem for directory in (PERSONA_DIR, PERSONA_LOCAL_DIR) for p in directory.glob("*.txt")})
     return names or [""]
 
 
