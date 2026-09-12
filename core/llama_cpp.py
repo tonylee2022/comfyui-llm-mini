@@ -3,6 +3,7 @@ from __future__ import annotations
 import atexit
 import contextlib
 import json
+import math
 import os
 import platform
 import re
@@ -49,11 +50,16 @@ MODEL_CONFIG_INTEGER_FIELDS = {
     "ubatch_size": ("ubatch-size", 1, 8192),
     "threads": ("threads", 1, 1024),
     "image_max_tokens": ("image-max-tokens", 1, 65536),
+    "spec_draft_n_max": ("spec-draft-n-max", 1, 16),
+}
+MODEL_CONFIG_FLOAT_FIELDS = {
+    "video_fps": ("video-fps", 0.1, 60.0),
 }
 MODEL_CONFIG_ENUM_FIELDS = {
     "flash_attn": ("flash-attn", {"auto", "on", "off"}),
     "cache_type_k": ("cache-type-k", {"f32", "f16", "bf16", "q8_0", "q4_0", "q4_1", "iq4_nl", "q5_0", "q5_1"}),
     "cache_type_v": ("cache-type-v", {"f32", "f16", "bf16", "q8_0", "q4_0", "q4_1", "iq4_nl", "q5_0", "q5_1"}),
+    "spec_type": ("spec-type", {"none", "draft-mtp"}),
 }
 MODEL_CONFIG_MODALITY_FIELDS = {
     "supports_image": "image",
@@ -234,7 +240,11 @@ def _normalize_advanced_model_args(value: Any) -> str:
         name = name.lstrip("-").lower()
         if not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", name):
             raise ValueError(f"Invalid advanced llama.cpp parameter name: {name}")
-        standard_names = {spec[0] for spec in MODEL_CONFIG_INTEGER_FIELDS.values()} | {spec[0] for spec in MODEL_CONFIG_ENUM_FIELDS.values()}
+        standard_names = (
+            {spec[0] for spec in MODEL_CONFIG_INTEGER_FIELDS.values()}
+            | {spec[0] for spec in MODEL_CONFIG_FLOAT_FIELDS.values()}
+            | {spec[0] for spec in MODEL_CONFIG_ENUM_FIELDS.values()}
+        )
         if name in MODEL_CONFIG_RESERVED_ARGS or name in standard_names:
             raise ValueError(f"The llama.cpp parameter cannot be overridden in advanced settings: {name}")
         if name not in MODEL_CONFIG_ADVANCED_ARGS:
@@ -264,6 +274,17 @@ def normalize_llama_cpp_model_config(values: dict[str, Any] | None) -> dict[str,
         if number < minimum or number > maximum:
             raise ValueError(f"{field} must be between {minimum} and {maximum}.")
         normalized[field] = number
+    for field, (_, minimum, maximum) in MODEL_CONFIG_FLOAT_FIELDS.items():
+        raw = values.get(field)
+        if raw in (None, ""):
+            continue
+        try:
+            number = float(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field} must be a number.") from exc
+        if not math.isfinite(number) or number < minimum or number > maximum:
+            raise ValueError(f"{field} must be between {minimum} and {maximum}.")
+        normalized[field] = number
     for field, (_, allowed) in MODEL_CONFIG_ENUM_FIELDS.items():
         raw = str(values.get(field, "") or "").strip().lower()
         if not raw or raw == "inherit":
@@ -271,6 +292,8 @@ def normalize_llama_cpp_model_config(values: dict[str, Any] | None) -> dict[str,
         if raw not in allowed:
             raise ValueError(f"Invalid value for {field}.")
         normalized[field] = raw
+    if "spec_draft_n_max" in normalized and normalized.get("spec_type") != "draft-mtp":
+        raise ValueError("spec_draft_n_max requires spec_type=draft-mtp.")
     for field in MODEL_CONFIG_MODALITY_FIELDS:
         raw_value = values.get(field, "")
         if isinstance(raw_value, bool):
@@ -370,6 +393,9 @@ def write_llama_cpp_model_preset(settings: LlamaCppSettings | None = None) -> Pa
         for field, (argument, _, _) in MODEL_CONFIG_INTEGER_FIELDS.items():
             if field in values:
                 lines.append(f"{argument} = {values[field]}")
+        for field, (argument, _, _) in MODEL_CONFIG_FLOAT_FIELDS.items():
+            if field in values:
+                lines.append(f"{argument} = {values[field]:g}")
         for field, (argument, _) in MODEL_CONFIG_ENUM_FIELDS.items():
             if field in values:
                 lines.append(f"{argument} = {values[field]}")

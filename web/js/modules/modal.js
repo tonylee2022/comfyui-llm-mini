@@ -770,6 +770,14 @@ export function showLlamaCppManagerModal(initialStatus, onChanged) {
     addInput("ubatch_size", t("Micro Batch Size", "微批处理大小"));
     addInput("threads", t("CPU Threads", "CPU 线程数"));
     addInput("image_max_tokens", t("Max Visual Tokens / Frame", "每帧最大视觉 Token"), "number", "model default");
+    addInput("video_fps", t("Video Analysis FPS", "视频分析帧率"), "number", "4");
+    fields.video_fps.min = "0.1";
+    fields.video_fps.max = "60";
+    fields.video_fps.step = "0.1";
+    addInput("spec_draft_n_max", t("MTP Draft Tokens", "MTP 草稿 Token"), "number", "3");
+    fields.spec_draft_n_max.min = "1";
+    fields.spec_draft_n_max.max = "16";
+    fields.spec_draft_n_max.step = "1";
 
     const enumInput = (key, labelText, values, defaultValue = "inherit") => {
       const label = document.createElement("label");
@@ -790,6 +798,20 @@ export function showLlamaCppManagerModal(initialStatus, onChanged) {
     const cacheValues = ["inherit", "f16", "bf16", "q8_0", "q4_0", "q4_1", "iq4_nl", "q5_0", "q5_1"];
     enumInput("cache_type_k", "KV Cache K", cacheValues.map((value) => [value, value === "inherit" ? t("Inherit", "继承默认") : value]));
     enumInput("cache_type_v", "KV Cache V", cacheValues.map((value) => [value, value === "inherit" ? t("Inherit", "继承默认") : value]));
+    enumInput("spec_type", t("Speculative Decoding", "推测解码"), [
+      ["inherit", t("Inherit", "继承默认")],
+      ["none", t("Disabled", "关闭")],
+      ["draft-mtp", "MTP"],
+    ]);
+    const syncMtpFields = () => {
+      const enabled = fields.spec_type.value === "draft-mtp";
+      fields.spec_draft_n_max.disabled = !enabled;
+      fields.spec_draft_n_max.title = enabled
+        ? t("Start with 1 when the GGUF contains one NextN prediction layer.", "GGUF 只有一个 NextN 预测层时，建议从 1 开始。")
+        : t("Select MTP to configure draft tokens.", "选择 MTP 后才能配置草稿 Token。");
+    };
+    fields.spec_type.addEventListener("change", syncMtpFields);
+    syncMtpFields();
     const modalityValues = [
       ["auto", t("Auto Detect", "自动检测")],
       ["enabled", t("Manually Enable", "手动启用")],
@@ -841,7 +863,11 @@ export function showLlamaCppManagerModal(initialStatus, onChanged) {
         resetButton.disabled = false;
       }
     };
-    saveButton.addEventListener("click", () => save(Object.fromEntries(Object.entries(fields).map(([key, input]) => [key, input.value.trim()]))));
+    saveButton.addEventListener("click", () => {
+      const config = Object.fromEntries(Object.entries(fields).map(([key, input]) => [key, input.value.trim()]));
+      if (config.spec_type !== "draft-mtp") config.spec_draft_n_max = "";
+      save(config);
+    });
     resetButton.addEventListener("click", () => save({}));
     editorClose.addEventListener("click", closeEditor);
     document.body.appendChild(editorOverlay);
